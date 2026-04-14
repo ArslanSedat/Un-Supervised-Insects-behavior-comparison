@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
-// ─── PALETTE & STYLE ────────────────────────────────────────────────────────
+// palette de couleurs
 const C = {
   bg: "#ffffff",
   panel: "#f8f9fa",
@@ -495,15 +495,26 @@ function ImpactProfileTab({ bees, selectedIds }) {
     <div style={{padding:20,maxWidth:720,margin:"0 auto"}}>
 
       {selectedIds.size > 0 && (
-        <div style={{background:"rgba(37,99,235,.07)",border:`1px solid ${C.accent}30`,
-          borderRadius:8,padding:"8px 14px",marginBottom:16,fontSize:11,color:C.accent}}>
-          📌 {selectedIds.size} bourdon{selectedIds.size>1?"s":""} sélectionné{selectedIds.size>1?"s":""}
-          {" — "}{temoins.length} témoin{temoins.length>1?"s":""}, {exposes.length} exposé{exposes.length>1?"s":""}
+        <div style={{marginTop:24,background:C.ctrl,borderRadius:8,padding:14,border:`1px solid ${C.border}`}}>
+          <div style={{fontFamily:"Poppins",fontWeight:700,fontSize:10,color:C.muted,
+            marginBottom:10,textTransform:"uppercase",letterSpacing:1}}>
+            Individus inclus dans l'analyse
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div style={{textAlign:"center",padding:10,background:C.bg,borderRadius:6,border:`1px solid ${C.temoin}40`}}>
+              <div style={{fontSize:9,color:C.temoin,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Témoins</div>
+              <div style={{fontFamily:"Poppins",fontWeight:800,fontSize:24,color:C.temoin}}>{temoins.length}</div>
+            </div>
+            <div style={{textAlign:"center",padding:10,background:C.bg,borderRadius:6,border:`1px solid ${C.expose}40`}}>
+              <div style={{fontSize:9,color:C.expose,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Exposés</div>
+              <div style={{fontFamily:"Poppins",fontWeight:800,fontSize:24,color:C.expose}}>{exposes.length}</div>
+            </div>
+          </div>
         </div>
       )}
 
       <div style={{fontFamily:"Poppins",fontWeight:800,fontSize:16,color:C.text,marginBottom:4}}>
-        🧪 Profil d'impact pesticide
+        Profil Impact
       </div>
       <div style={{color:C.muted,fontSize:11,marginBottom:20,lineHeight:1.7}}>
         Métriques comportementales calculées sur les trajectoires 3D
@@ -511,7 +522,7 @@ function ImpactProfileTab({ bees, selectedIds }) {
       </div>
 
       {/* ── Cinématique de vol ── */}
-      <SectionHead>⚡ Cinématique de vol</SectionHead>
+      <SectionHead>Cinématique de vol</SectionHead>
 
       <DualBar
         label={<>Vitesse moyenne<DeltaBadge d={delta("vitesse_moy")} invert={false}/></>}
@@ -533,11 +544,11 @@ function ImpactProfileTab({ bees, selectedIds }) {
       />
 
       {/* ── Structure de trajectoire ── */}
-      <SectionHead>📐 Structure de trajectoire</SectionHead>
+      <SectionHead>Structure de trajectoire</SectionHead>
 
       <DualBar
         label={<>Linéarité<DeltaBadge d={delta("linearite")} invert={false}/></>}
-        tooltip="Ratio distance directe/totale — 1=ligne droite parfaite"
+        tooltip="à refaire : linéarité pca ou tortuosité ?"
         temoinVal={mT?.linearite} exposeVal={mE?.linearite} maxVal={1}
       />
       <DualBar
@@ -554,7 +565,7 @@ function ImpactProfileTab({ bees, selectedIds }) {
       />
 
       {/* ── Comportement de butinage ── */}
-      <SectionHead>🌸 Comportement de butinage</SectionHead>
+      <SectionHead>Comportement de butinage</SectionHead>
 
       <DualBar
         label={<>Ratio temps d'immobilité / vol<DeltaBadge d={delta("ratio_butinage")} invert={false}/></>}
@@ -569,31 +580,13 @@ function ImpactProfileTab({ bees, selectedIds }) {
       />
 
       {/* ── Efficacité globale ── */}
-      <SectionHead>🎯 Efficacité globale</SectionHead>
+      <SectionHead>Efficacité globale</SectionHead>
 
       <DualBar
         label={<>Score d'efficacité<DeltaBadge d={delta("efficacite")} invert={false}/></>}
-        tooltip="Score composite Python : linéarité + stabilité vitesse + visites + retour ruche"
+        tooltip="Score composite : linéarité + stabilité vitesse + visites + retour ruche "
         temoinVal={mT?.efficacite} exposeVal={mE?.efficacite} maxVal={1}
       />
-
-      {/* Récapitulatif n */}
-      <div style={{marginTop:24,background:C.ctrl,borderRadius:8,padding:14,border:`1px solid ${C.border}`}}>
-        <div style={{fontFamily:"Poppins",fontWeight:700,fontSize:10,color:C.muted,
-          marginBottom:10,textTransform:"uppercase",letterSpacing:1}}>
-          Individus inclus dans l'analyse
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <div style={{textAlign:"center",padding:10,background:C.bg,borderRadius:6,border:`1px solid ${C.temoin}40`}}>
-            <div style={{fontSize:9,color:C.temoin,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Témoins</div>
-            <div style={{fontFamily:"Poppins",fontWeight:800,fontSize:24,color:C.temoin}}>{temoins.length}</div>
-          </div>
-          <div style={{textAlign:"center",padding:10,background:C.bg,borderRadius:6,border:`1px solid ${C.expose}40`}}>
-            <div style={{fontSize:9,color:C.expose,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Exposés</div>
-            <div style={{fontFamily:"Poppins",fontWeight:800,fontSize:24,color:C.expose}}>{exposes.length}</div>
-          </div>
-        </div>
-      </div>
 
     </div>
   );
@@ -779,7 +772,7 @@ export default function BourdonTracker() {
   // données pour le panneau résumé
   const temoinBees = bees.filter(b => b.group === "temoin");
   const exposeBees = bees.filter(b => b.group === "expose");
-  // "Normal" = ML prediction (0 = temoin, 1 = expose) ou fallback sur efficacite
+  // "Normal" = ML prediction (0 = temoin, 1 = expose)
   const isNormal = b => b.ml_prediction === 0 ? true : b.ml_prediction === 1 ? false : b.stats.efficacite >= 0.5;
   const temoinNormal = temoinBees.filter(isNormal).length;
   const exposeNormal = exposeBees.filter(isNormal).length;
@@ -822,7 +815,7 @@ export default function BourdonTracker() {
           {/* ── SIDEBAR GAUCHE ────────────────────────────────────────────── */}
           <div className="sidebar">
             <div className="section">
-              <div className="section-title">📥 Données</div>
+              <div className="section-title">Données</div>
               <div className="json-input-group">
                 <div className="json-input-label">Groupe Témoin (JSON)</div>
                 <textarea className="json-input-area" placeholder="Collez le JSON témoin ici..."
@@ -854,7 +847,7 @@ export default function BourdonTracker() {
               <div className="section-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <span>👥 Individus ({bees.length})</span>
                 <div style={{display:"flex",gap:"5px",flexWrap:"wrap"}}>
-                  <span onClick={() => setSelectedIds(new Set())}
+                  <span onClick={() => setSelectedIds(new Set(bees.map(b=>b.id)))}
                     style={{cursor:"pointer",fontSize:"9px",color:C.text,background:C.ctrl,padding:"2px 6px",borderRadius:"4px"}}>
                     Tous
                   </span>
@@ -905,9 +898,9 @@ export default function BourdonTracker() {
           {/* ── CENTRE ─────────────────────────────────────────────────────── */}
           <div className="center">
             <div className="tabs">
-              <div className={`tab ${tab==="map"?"active":""}`} onClick={()=>setTab("map")}>🗺️ Visualisation</div>
-              <div className={`tab ${tab==="analysis"?"active":""}`} onClick={()=>setTab("analysis")}>📊 Analyse</div>
-              <div className={`tab ${tab==="impact"?"active":""}`} onClick={()=>setTab("impact")}>🧪 Profil Impact</div>
+              <div className={`tab ${tab==="map"?"active":""}`} onClick={()=>setTab("map")}>Visualisation</div>
+              <div className={`tab ${tab==="analysis"?"active":""}`} onClick={()=>setTab("analysis")}>Analyse</div>
+              <div className={`tab ${tab==="impact"?"active":""}`} onClick={()=>setTab("impact")}>Profil Impact</div>
             </div>
 
             {/* Visualisation */}
@@ -949,7 +942,7 @@ export default function BourdonTracker() {
 
                     <div>
                       <div style={{fontFamily:"Poppins",fontWeight:700,fontSize:14,color:C.text,marginBottom:12}}>
-                        📋 Fiche : {selectedBee.id}
+                        Fiche : {selectedBee.id}
                         {selectedIds.size > 1 &&
                           <span style={{fontSize:10,color:C.muted,fontWeight:400,marginLeft:8}}>
                             (+{selectedIds.size-1} autre{selectedIds.size>2?"s":""}  — voir Profil Impact)
@@ -968,7 +961,7 @@ export default function BourdonTracker() {
                     </div>
 
                     <div>
-                      <div style={{fontFamily:"Poppins",fontWeight:700,fontSize:14,color:C.text,marginBottom:12}}>📈 Cinématique</div>
+                      <div style={{fontFamily:"Poppins",fontWeight:700,fontSize:14,color:C.text,marginBottom:12}}>Cinématique</div>
                       <div className="stat-row">
                         <span className="stat-label">Vitesse moy.</span>
                         <span className="stat-val">{selectedBee.stats.vitesse_moy.toFixed(3)} m/s</span>
@@ -984,7 +977,7 @@ export default function BourdonTracker() {
                     </div>
 
                     <div>
-                      <div style={{fontFamily:"Poppins",fontWeight:700,fontSize:14,color:C.text,marginBottom:12}}>🎯 Efficacité de trajectoire</div>
+                      <div style={{fontFamily:"Poppins",fontWeight:700,fontSize:14,color:C.text,marginBottom:12}}>Efficacité de trajectoire</div>
                       <div style={{background:C.ctrl,borderRadius:6,padding:12,border:`1px solid ${C.border}`}}>
                         <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                           <span style={{fontSize:11,color:C.muted}}>Score global</span>
