@@ -5,13 +5,14 @@ import math
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.ensemble import RandomForestClassifier
+#from sklearn.ensemble import IsolationForest
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
 app = Flask(__name__)
 CORS(app)
 
-# Modèle de ML (Random Forest, essayer Isolation Forest ou SVM)
+# Modèle de ML (Random Forest, je dois essayer isolation forest qui peut etre mieux pour detecter des anomalies)
 model = RandomForestClassifier(n_estimators=50, random_state=42)
 X_train = []
 y_train = []
@@ -80,7 +81,7 @@ def upload_file():
             dist_ruche_fin = math.sqrt((pN["x"] - ruche["x"])**2 + (pN["y"] - ruche["y"])**2 + (pN["z"] - ruche.get("z", 0))**2)
             retour_ruche = 1.0 if dist_ruche_fin < 0.5 else max(0, 1 - dist_ruche_fin)
 
-            # règle d'efficacité, peut être ajustée
+            # règle d'efficacité, peut être ajustée ?
             rule_score = (
                 0.25 * linearite +
                 0.10 * stabilite +
@@ -103,7 +104,21 @@ def upload_file():
             #)
             #tortuosite = dist_directe / dist_totale if dist_totale > 0 else 0
 
-
+            #vitesse moyenne
+            #vitesse max
+            #acceleration moyenne
+            #acceleration max
+            #angle de changement de direction
+            #altitude moyenne et variation d'altitude
+            #nombre de changements de direction brusques ???
+            #distance parcourue totale
+            #temps passé à visiter les plantes
+            #temps passé à la ruche
+            #nombre de visites à la ruche
+            #nombre de visites à chaque plante
+            #temps entre la première visite à une plante et le retour à la ruche
+            #ratio temps de vol / temps total
+            #aire d'exploration (en calculant l'enveloppe convexe des points de la trajectoire)
 
 
 

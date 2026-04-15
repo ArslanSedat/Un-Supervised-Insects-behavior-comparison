@@ -69,6 +69,73 @@ const styles = `
   .normal-summary-row:last-child{border-bottom:none}
 `;
 
+// ─── VALIDATION ET TESTS DES FICHIERS JSON ───────────────────────────────────
+function validateJSONStructure(json, groupName) {
+  const errors = [];
+  
+  // Test 1: JSON valide
+  if (!json || typeof json !== "object") {
+    errors.push(`[${groupName}] JSON invalide ou vide`);
+    return { valid: false, errors };
+  }
+  
+  // Test 2: Métadonnées présentes
+  if (!json.metadonnees) {
+    errors.push(`[${groupName}] Métadonnées manquantes`);
+  }
+  
+  // Test 3: Au moins un bourdon avec trajectoire
+  const bourdons = Object.entries(json)
+    .filter(([k]) => k.startsWith("bourdon_") || k.startsWith("bee_"))
+    .map(([_, v]) => v);
+  
+  if (bourdons.length === 0) {
+    errors.push(`[${groupName}] Aucun bourdon trouvé (clés attendues: bourdon_*, bee_*)`);
+    return { valid: false, errors };
+  }
+  
+  // Test 4: Trajectoires valides
+  let bourdonsValides = 0;
+  bourdons.forEach((b, idx) => {
+    const traj = b.trajectoire || b.trajectory || [];
+    if (!Array.isArray(traj) || traj.length < 2) {
+      errors.push(`[${groupName}] Bourdon ${idx}: trajectoire invalide (${traj.length} points)`);
+    } else {
+      // Vérifier que chaque point a x,y,z
+      const pointsInvalides = traj.filter(p => !p.hasOwnProperty('x') || !p.hasOwnProperty('y') || !p.hasOwnProperty('z'));
+      if (pointsInvalides.length > 0) {
+        errors.push(`[${groupName}] Bourdon ${idx}: ${pointsInvalides.length} points manquent x,y,z`);
+      } else {
+        bourdonsValides++;
+      }
+    }
+  });
+  
+  if (bourdonsValides === 0) {
+    errors.push(`[${groupName}] Aucun bourdon avec trajectoire valide`);
+    return { valid: false, errors };
+  }
+  
+  // Test 5: Cage expérimentale
+  const cage = json.metadonnees?.cage_experimentale;
+  if (!cage) {
+    errors.push(`[${groupName}] cage_experimentale manquante`);
+  } else {
+    if (!cage.ruche_position_m) {
+      errors.push(`[${groupName}] Position ruche manquante`);
+    }
+    if (!cage.dimensions_m) {
+      errors.push(`[${groupName}] Dimensions cage manquantes`);
+    }
+  }
+  
+  return { 
+    valid: errors.length === 0, 
+    errors,
+    stats: { totalBourdons: bourdons.length, bourdonsValides }
+  };
+}
+
 //PARSER du json
 function parseJSON(json) {
   const meta = json.metadonnees || {};
@@ -227,7 +294,7 @@ function renderHeatmap(canvas, bees, flowers, ruche, worldSize, selectedIds) {
   if (activeBees.length === 0) {
     ctx.fillStyle = C.muted;
     ctx.font = "11px Inter";
-    ctx.fillText("Vue de dessus (X-Y)", 8, 18);
+    ctx.fillText("à changer", 8, 18);
     return;
   }
   
@@ -622,6 +689,8 @@ export default function BourdonTracker() {
   const [rawJsonTemoin, setRawJsonTemoin] = useState(null);
   const [rawJsonExpose, setRawJsonExpose] = useState(null);
   const [backendProcessed, setBackendProcessed] = useState(false);
+  const [validationStatus, setValidationStatus] = useState({ temoin: null, expose: null });
+  const [validationErrors, setValidationErrors] = useState([]);
 
   const applyCompareResults = useCallback((beesList, compareResults) => {
     if (!compareResults?.bees_details) return beesList;
@@ -654,6 +723,22 @@ export default function BourdonTracker() {
   useEffect(() => {
     if (!rawJsonTemoin || !rawJsonExpose || backendProcessed) return;
 
+    // ─── ÉTAPE 1: TESTS/VALIDATION ───
+    const validTemoin = validateJSONStructure(rawJsonTemoin, "Témoin");
+    const validExpose = validateJSONStructure(rawJsonExpose, "Exposé");
+    
+    setValidationStatus({ temoin: validTemoin.valid, expose: validExpose.valid });
+    
+    const allErrors = [...validTemoin.errors, ...validExpose.errors];
+    if (allErrors.length > 0) {
+      setValidationErrors(allErrors);
+      console.warn("❌ Validation échouée:", allErrors);
+      return; // S'arrête ici si la validation échoue
+    }
+    
+    console.log("✅ Validation réussie", { temoin: validTemoin.stats, expose: validExpose.stats });
+
+    // ─── ÉTAPE 2: TRAITEMENT BACKEND ───
     const uploadJson = async (json, group) => {
       try {
         const formData = new FormData();
@@ -840,6 +925,35 @@ export default function BourdonTracker() {
                   style={{marginTop:8,cursor:"pointer",fontSize:11}}
                 />
               </div>
+
+              {/* Affichage des erreurs de validation */}
+              {validationErrors.length > 0 && (
+                <div style={{background:"rgba(239,68,68,.1)",border:`1px solid ${C.expose}`,borderRadius:8,padding:12,marginBottom:12}}>
+                  <div style={{fontSize:10,fontWeight:700,color:C.expose,marginBottom:8,display:"flex",alignItems:"center",gap:4}}>
+                    ⚠️ Erreurs de validation
+                  </div>
+                  <ul style={{fontSize:10,color:C.text,margin:0,paddingLeft:16,gap:4,display:"flex",flexDirection:"column"}}>
+                    {validationErrors.map((err, i) => (
+                      <li key={i} style={{marginBottom:4}}>{err}</li>
+                    ))}
+                  </ul>
+                  <div style={{fontSize:9,color:C.muted,marginTop:8,fontStyle:"italic"}}>
+                    ✅ Vérification: métadonnées, trajectoires, points x/y/z
+                  </div>
+                </div>
+              )}
+
+              {/* Affichage du statut de validation réussie */}
+              {validationStatus.temoin === true && validationStatus.expose === true && validationErrors.length === 0 && (
+                <div style={{background:"rgba(16,185,129,.1)",border:`1px solid ${C.green}`,borderRadius:8,padding:12,marginBottom:12}}>
+                  <div style={{fontSize:10,fontWeight:700,color:C.green,display:"flex",alignItems:"center",gap:4}}>
+                    ✅ Validation réussie
+                  </div>
+                  <div style={{fontSize:9,color:C.muted,marginTop:6}}>
+                    Traitement en cours...
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Liste des bourdons */}
@@ -998,54 +1112,7 @@ export default function BourdonTracker() {
                       </div>
                     </div>
 
-                    {selectedBee.clf && (
-                      <div>
-                        <div style={{fontFamily:"Poppins",fontWeight:700,fontSize:14,color:C.text,marginBottom:12}}>🤖 Classification IA</div>
-                        <div style={{background:C.ctrl,borderRadius:6,padding:12,border:`1px solid ${C.border}`}}>
-                          <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Prédiction</div>
-                          <div style={{fontSize:14,fontWeight:700,fontFamily:"Poppins",
-                            color:selectedBee.clf.label==="normal"?C.green:C.expose}}>
-                            {selectedBee.clf.label.toUpperCase()}
-                          </div>
-                          <div style={{height:5,background:C.border,borderRadius:3,overflow:"hidden",marginTop:8}}>
-                            <div style={{height:"100%",borderRadius:3,
-                              width:`${selectedBee.clf.confiance*100}%`,
-                              background:selectedBee.clf.confiance>0.8?C.green:selectedBee.clf.confiance>0.6?C.orange:C.expose,
-                              transition:"width .6s"}}/>
-                          </div>
-                          <div style={{fontSize:10,color:C.muted,marginTop:6}}>
-                            Confiance : {(selectedBee.clf.confiance*100).toFixed(1)}%
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {selectedBee.ml_prediction !== null && selectedBee.ml_prediction !== undefined && (
-                      <div>
-                        <div style={{fontFamily:"Poppins",fontWeight:700,fontSize:14,color:C.text,marginBottom:12}}>🤖 Prédiction Random Forest</div>
-                        <div style={{background:C.ctrl,borderRadius:6,padding:12,border:`1px solid ${C.border}`}}>
-                          <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Prédiction</div>
-                          <div style={{fontSize:14,fontWeight:700,fontFamily:"Poppins",
-                            color:selectedBee.ml_prediction===0?C.temoin:C.expose}}>
-                            {selectedBee.ml_prediction===0?"TÉMOIN (Normal)":"EXPOSÉ (Anormal)"}
-                          </div>
-                          <div style={{height:6,background:C.border,borderRadius:3,overflow:"hidden",marginTop:8,display:"flex"}}>
-                            <div style={{height:"100%",borderRadius:"3px 0 0 3px",
-                              width:`${(selectedBee.ml_prediction===0?1-selectedBee.ml_confidence:selectedBee.ml_confidence)*100}%`,
-                              background:C.temoin,
-                              transition:"width .6s"}}/>
-                            <div style={{height:"100%",borderRadius:"0 3px 3px 0",
-                              width:`${(selectedBee.ml_prediction===0?selectedBee.ml_confidence:1-selectedBee.ml_confidence)*100}%`,
-                              background:C.expose,
-                              transition:"width .6s"}}/>
-                          </div>
-                          <div style={{fontSize:10,color:C.muted,marginTop:6,display:"flex",justifyContent:"space-between"}}>
-                            <span>Confiance {selectedBee.ml_prediction===0?"témoin":"exposé"}</span>
-                            <span style={{fontWeight:700}}>{(selectedBee.ml_confidence*100).toFixed(1)}%</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                
 
                   </div>
                 ) : (
