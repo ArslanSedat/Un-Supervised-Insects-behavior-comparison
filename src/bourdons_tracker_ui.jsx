@@ -923,7 +923,7 @@ export default function BourdonTracker() {
                   <div style={{position:"absolute",bottom:12,left:12,background:"rgba(0,0,0,0.7)",
                     color:"#fff",padding:"6px 12px",borderRadius:6,fontSize:11,
                     fontFamily:"monospace",pointerEvents:"none",zIndex:10}}>
-                    🖱️ Glisser = rotation 3D | ⇧+Glisser = déplacement | ⚡ Scroll = zoom | 🔄 Double-clic = reset
+                    Glisser en cliquant = rotation 3D | Glisser la molette = déplacement | Scroll = zoom | Double-clic = reset
                   </div>
                 </div>
                 <div style={{flex:1,minHeight:0,borderTop:`1px solid ${C.border}`,position:"relative",background:C.bg}}>

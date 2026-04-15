@@ -90,6 +90,9 @@ def upload_file():
 
             bourdon["efficacite_rule"] = round(rule_score, 3)
 
+
+
+
             # TORTUOSITE (uniquement pour le random forest)
 
             #p0, pTOR = traj[0], traj[-1]
@@ -99,6 +102,9 @@ def upload_file():
             #    for i in range(1, len(traj))
             #)
             #tortuosite = dist_directe / dist_totale if dist_totale > 0 else 0
+
+
+
 
 
             # features pour ML
