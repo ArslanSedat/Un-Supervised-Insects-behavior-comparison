@@ -59,6 +59,11 @@ def upload_file():
             else:
                 linearite = 0.0
 
+            # Stocker la linéarité PCA dans les statistiques
+            if "statistiques" not in bourdon:
+                bourdon["statistiques"] = {}
+            bourdon["statistiques"]["linearite_pca"] = round(linearite, 3)
+
             # STABILITE DE LA VITESSE
             vitesses = [p.get("vitesse_ms", 0) for p in traj if p.get("vitesse_ms", 0) > 0]
             if len(vitesses) > 1:

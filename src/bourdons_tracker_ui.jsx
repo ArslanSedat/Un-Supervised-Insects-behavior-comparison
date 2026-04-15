@@ -51,7 +51,6 @@ const styles = `
   .bar-fill{height:100%;border-radius:2px;transition:width .5s}
   .no-data{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:${C.muted};gap:8px}
   .badge-ok{background:rgba(16,185,129,.12);color:${C.green};border:1px solid rgba(16,185,129,.3);border-radius:4px;padding:3px 8px;font-size:10px;font-weight:600;display:inline-block}
-  .badge-nok{background:rgba(239,68,68,.12);color:${C.expose};border:1px solid rgba(239,68,68,.3);border-radius:4px;padding:3px 8px;font-size:10px;font-weight:600;display:inline-block}
   .json-input-group{background:${C.ctrl};border:1px solid ${C.border};border-radius:8px;padding:12px;margin-bottom:12px}
   .json-input-label{font-size:10px;font-weight:700;color:${C.text};text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
   .json-input-area{width:100%;min-height:80px;padding:8px;border:1px solid ${C.border};border-radius:6px;font-family:'Inter',monospace;font-size:11px;color:${C.text};background:${C.bg};resize:vertical}
@@ -69,77 +68,9 @@ const styles = `
   .normal-summary-row:last-child{border-bottom:none}
 `;
 
-// ─── VALIDATION ET TESTS DES FICHIERS JSON ───────────────────────────────────
-function validateJSONStructure(json, groupName) {
-  const errors = [];
-  
-  // Test 1: JSON valide
-  if (!json || typeof json !== "object") {
-    errors.push(`[${groupName}] JSON invalide ou vide`);
-    return { valid: false, errors };
-  }
-  
-  // Test 2: Métadonnées présentes
-  if (!json.metadonnees) {
-    errors.push(`[${groupName}] Métadonnées manquantes`);
-  }
-  
-  // Test 3: Au moins un bourdon avec trajectoire
-  const bourdons = Object.entries(json)
-    .filter(([k]) => k.startsWith("bourdon_") || k.startsWith("bee_"))
-    .map(([_, v]) => v);
-  
-  if (bourdons.length === 0) {
-    errors.push(`[${groupName}] Aucun bourdon trouvé (clés attendues: bourdon_*, bee_*)`);
-    return { valid: false, errors };
-  }
-  
-  // Test 4: Trajectoires valides
-  let bourdonsValides = 0;
-  bourdons.forEach((b, idx) => {
-    const traj = b.trajectoire || b.trajectory || [];
-    if (!Array.isArray(traj) || traj.length < 2) {
-      errors.push(`[${groupName}] Bourdon ${idx}: trajectoire invalide (${traj.length} points)`);
-    } else {
-      // Vérifier que chaque point a x,y,z
-      const pointsInvalides = traj.filter(p => !p.hasOwnProperty('x') || !p.hasOwnProperty('y') || !p.hasOwnProperty('z'));
-      if (pointsInvalides.length > 0) {
-        errors.push(`[${groupName}] Bourdon ${idx}: ${pointsInvalides.length} points manquent x,y,z`);
-      } else {
-        bourdonsValides++;
-      }
-    }
-  });
-  
-  if (bourdonsValides === 0) {
-    errors.push(`[${groupName}] Aucun bourdon avec trajectoire valide`);
-    return { valid: false, errors };
-  }
-  
-  // Test 5: Cage expérimentale
-  const cage = json.metadonnees?.cage_experimentale;
-  if (!cage) {
-    errors.push(`[${groupName}] cage_experimentale manquante`);
-  } else {
-    if (!cage.ruche_position_m) {
-      errors.push(`[${groupName}] Position ruche manquante`);
-    }
-    if (!cage.dimensions_m) {
-      errors.push(`[${groupName}] Dimensions cage manquantes`);
-    }
-  }
-  
-  return { 
-    valid: errors.length === 0, 
-    errors,
-    stats: { totalBourdons: bourdons.length, bourdonsValides }
-  };
-}
-
-//PARSER du json
+// PARSER du json
 function parseJSON(json) {
   const meta = json.metadonnees || {};
-  const pesticide = meta.pesticide || {};
   const cage = meta.cage_experimentale || {};
   const plantes = cage.plantes || [];
   const flowers = plantes.map(p => [p.x, p.y, p.z]);
@@ -163,44 +94,31 @@ function parseJSON(json) {
     }));
     const stats = val.statistiques || {};
     const clf = val.classification || null;
+    const descriptors = computeDescriptors(points);
     bees.push({
       id: val.id || key,
       key,
       group: val.groupe === "temoin" ? "temoin"
            : val.groupe === "expose" ? "expose"
            : (val.pesticide_type === "none" ? "temoin" : "expose"),
-      comportement: stats.comportement || val.comportement || "",
-      notes: val.notes || "",
-      poids: val.poids_mg,
-      age: val.age_jours,
       stats: {
         vitesse_moy:  stats.vitesse_moyenne_ms ?? val.velocity_avg ?? 0,
         vitesse_max:  stats.vitesse_max_ms ?? 0,
-        vitesse_min:  stats.vitesse_min_ms ?? 0,
         acc_moy:      stats.acceleration_moyenne_ms2 ?? 0,
-        acc_max:      stats.acceleration_max_ms2 ?? 0,
         visites:      stats.visites_plantes ?? val.total_visits ?? 0,
         efficacite:   stats.efficacite_trajet ?? val.efficacite ?? val.path_efficiency ?? 0,
-        duree_butinage: stats.duree_butinage_s ?? 0,
-        total_flight_time: val.total_flight_time ?? points.length,
+        linearite:    stats.linearite_pca ?? stats.linearite ?? descriptors.linearite ?? 0,
       },
       clf: clf ? {
         label:        clf.label,
-        confiance:    clf.confiance,
-        modele:       clf.modele,
-        correct:      clf.correct,
-        labelVrai:    clf.label_supervise,
         proba:        clf.probabilites || {},
-        importances:  clf.feature_importances || {},
-        descripteurs: clf.descripteurs || {},
-        cv:           clf.cv || null,
       } : null,
       ml_prediction: val.ml_prediction ?? null,
       ml_confidence: val.ml_confidence ?? null,
       points,
     });
   }
-  return { meta, pesticide, flowers, ruche, worldSize, bees };
+  return { meta, flowers, ruche, worldSize, bees };
 }
 
 //CALCUL DES DESCRIPTEURS DE TRAJECTOIRE
@@ -272,7 +190,7 @@ function groupImpactMetrics(bees) {
     vitesse_moy:      avg(descs.map(d => d.vitesse_moyenne ?? 0)),
     acc_rms:          avg(descs.map(d => d.erraticite ?? 0)),
     ang_moy:          avg(descs.map(d => d.vitesse_angulaire_moyenne ?? 0)),
-    linearite:        avg(descs.map(d => d.linearite ?? 0)),
+    linearite:        avg(bees.map(b => b.stats.linearite)),
     aire_exploration: avg(descs.map(d => d.aire_exploration ?? 0)),
     ratio_butinage:   avg(descs.map(d => d.ratio_butinage ?? 0)),
     dist_totale:      avg(descs.map(d => d.dist_totale ?? 0)),
@@ -281,7 +199,7 @@ function groupImpactMetrics(bees) {
   };
 }
 
-// heatmap
+// heatmap simple avec gradient
 function renderHeatmap(canvas, bees, flowers, ruche, worldSize, selectedIds) {
   const ctx = canvas.getContext("2d");
   const W = canvas.width = canvas.offsetWidth;
@@ -290,26 +208,18 @@ function renderHeatmap(canvas, bees, flowers, ruche, worldSize, selectedIds) {
   ctx.fillRect(0, 0, W, H);
 
   const activeBees = selectedIds.size > 0 ? bees.filter(b => selectedIds.has(b.id)) : bees;
-  
-  if (activeBees.length === 0) {
-    ctx.fillStyle = C.muted;
-    ctx.font = "11px Inter";
-    ctx.fillText("à changer", 8, 18);
-    return;
-  }
+  if (activeBees.length === 0) return;
   
   const imageData = ctx.createImageData(W, H);
   const data = imageData.data;
   const density = new Float32Array(W * H);
-  
-  const sigma = Math.max(W, H) * 0.008;
+  const sigma = Math.max(W, H) * 0.02;
   
   activeBees.forEach(bee => {
     bee.points.forEach(p => {
       const px = (p.x / worldSize[0]) * W;
       const py = (p.y / worldSize[1]) * H;
-      
-      const radius = sigma * 2.5;
+      const radius = sigma * 2;
       const x0 = Math.max(0, Math.floor(px - radius));
       const x1 = Math.min(W, Math.ceil(px + radius));
       const y0 = Math.max(0, Math.floor(py - radius));
@@ -317,28 +227,40 @@ function renderHeatmap(canvas, bees, flowers, ruche, worldSize, selectedIds) {
       
       for (let y = y0; y < y1; y++) {
         for (let x = x0; x < x1; x++) {
-          const dx = x - px;
-          const dy = y - py;
-          const dist2 = dx * dx + dy * dy;
-          const gaussian = Math.exp(-dist2 / (2 * sigma * sigma));
+          const dx = x - px, dy = y - py;
+          const gaussian = Math.exp(-(dx*dx + dy*dy) / (2 * sigma * sigma));
           density[y * W + x] += gaussian;
         }
       }
     });
   });
   
-  const maxDensity = Math.max(...density);
+  const maxDensity = Math.max(...density) || 1;
+  
+  const getColor = (norm) => {
+    if (norm < 0.25) {
+      const t = norm / 0.25;
+      return [0, Math.floor(100 + t * 155), 255];
+    } else if (norm < 0.5) {
+      const t = (norm - 0.25) / 0.25;
+      return [0, 255, Math.floor(255 * (1 - t))];
+    } else if (norm < 0.75) {
+      const t = (norm - 0.5) / 0.25;
+      return [Math.floor(t * 255), 255, 0];
+    } else {
+      const t = (norm - 0.75) / 0.25;
+      return [255, Math.floor(255 * (1 - t * 0.5)), 0]; 
+    }
+  };
   
   for (let i = 0; i < W * H; i++) {
-    const normalized = maxDensity > 0 ? density[i] / maxDensity : 0;
-    const gray = 255 - Math.floor(normalized * 255);
-    
-    data[i * 4 + 0] = gray;
-    data[i * 4 + 1] = gray;
-    data[i * 4 + 2] = gray;
-    data[i * 4 + 3] = 255;
+    const norm = Math.sqrt(density[i] / maxDensity);
+    const [r, g, b] = getColor(norm);
+    data[i * 4] = r;
+    data[i * 4 + 1] = g;
+    data[i * 4 + 2] = b;
+    data[i * 4 + 3] = 220;
   }
-  
   ctx.putImageData(imageData, 0, 0);
   
   // Ruche
@@ -370,21 +292,8 @@ function renderHeatmap(canvas, bees, flowers, ruche, worldSize, selectedIds) {
     ctx.stroke();
     ctx.fillStyle = "#000";
     ctx.font = "bold 9px Inter";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
     ctx.fillText(`F${idx+1}`, fx + 8, fy - 8);
   });
-  
-  ctx.fillStyle = C.text;
-  ctx.font = "11px Inter";
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  ctx.fillText("Vue de dessus (X-Y)", 8, 18);
-  
-  ctx.fillStyle = C.muted;
-  ctx.font = "9px Inter";
-  ctx.fillText("Y ↑", 5, 25);
-  ctx.fillText("X →", W - 25, H - 5);
 }
 
 // graphique
@@ -615,7 +524,7 @@ function ImpactProfileTab({ bees, selectedIds }) {
 
       <DualBar
         label={<>Linéarité<DeltaBadge d={delta("linearite")} invert={false}/></>}
-        tooltip="à refaire : linéarité pca ou tortuosité ?"
+        tooltip="Direction prédominante du vol — proche de 1 = trajectoire rectiligne efficace"
         temoinVal={mT?.linearite} exposeVal={mE?.linearite} maxVal={1}
       />
       <DualBar
@@ -689,8 +598,6 @@ export default function BourdonTracker() {
   const [rawJsonTemoin, setRawJsonTemoin] = useState(null);
   const [rawJsonExpose, setRawJsonExpose] = useState(null);
   const [backendProcessed, setBackendProcessed] = useState(false);
-  const [validationStatus, setValidationStatus] = useState({ temoin: null, expose: null });
-  const [validationErrors, setValidationErrors] = useState([]);
 
   const applyCompareResults = useCallback((beesList, compareResults) => {
     if (!compareResults?.bees_details) return beesList;
@@ -723,22 +630,7 @@ export default function BourdonTracker() {
   useEffect(() => {
     if (!rawJsonTemoin || !rawJsonExpose || backendProcessed) return;
 
-    // ─── ÉTAPE 1: TESTS/VALIDATION ───
-    const validTemoin = validateJSONStructure(rawJsonTemoin, "Témoin");
-    const validExpose = validateJSONStructure(rawJsonExpose, "Exposé");
-    
-    setValidationStatus({ temoin: validTemoin.valid, expose: validExpose.valid });
-    
-    const allErrors = [...validTemoin.errors, ...validExpose.errors];
-    if (allErrors.length > 0) {
-      setValidationErrors(allErrors);
-      console.warn("❌ Validation échouée:", allErrors);
-      return; // S'arrête ici si la validation échoue
-    }
-    
-    console.log("✅ Validation réussie", { temoin: validTemoin.stats, expose: validExpose.stats });
-
-    // ─── ÉTAPE 2: TRAITEMENT BACKEND ───
+    // ─── TRAITEMENT DONNÉES ───
     const uploadJson = async (json, group) => {
       try {
         const formData = new FormData();
@@ -926,34 +818,7 @@ export default function BourdonTracker() {
                 />
               </div>
 
-              {/* Affichage des erreurs de validation */}
-              {validationErrors.length > 0 && (
-                <div style={{background:"rgba(239,68,68,.1)",border:`1px solid ${C.expose}`,borderRadius:8,padding:12,marginBottom:12}}>
-                  <div style={{fontSize:10,fontWeight:700,color:C.expose,marginBottom:8,display:"flex",alignItems:"center",gap:4}}>
-                    ⚠️ Erreurs de validation
-                  </div>
-                  <ul style={{fontSize:10,color:C.text,margin:0,paddingLeft:16,gap:4,display:"flex",flexDirection:"column"}}>
-                    {validationErrors.map((err, i) => (
-                      <li key={i} style={{marginBottom:4}}>{err}</li>
-                    ))}
-                  </ul>
-                  <div style={{fontSize:9,color:C.muted,marginTop:8,fontStyle:"italic"}}>
-                    ✅ Vérification: métadonnées, trajectoires, points x/y/z
-                  </div>
-                </div>
-              )}
 
-              {/* Affichage du statut de validation réussie */}
-              {validationStatus.temoin === true && validationStatus.expose === true && validationErrors.length === 0 && (
-                <div style={{background:"rgba(16,185,129,.1)",border:`1px solid ${C.green}`,borderRadius:8,padding:12,marginBottom:12}}>
-                  <div style={{fontSize:10,fontWeight:700,color:C.green,display:"flex",alignItems:"center",gap:4}}>
-                    ✅ Validation réussie
-                  </div>
-                  <div style={{fontSize:9,color:C.muted,marginTop:6}}>
-                    Traitement en cours...
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Liste des bourdons */}
