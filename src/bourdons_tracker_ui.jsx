@@ -134,11 +134,9 @@ function computeDescriptors(points) {
     vels.push(Math.sqrt(dx*dx + dy*dy + dz*dz));
   }
 
-  // Variations d'accélération (magnitude)
   const accels = [];
   for (let i = 1; i < vels.length; i++) accels.push(Math.abs(vels[i] - vels[i-1]));
 
-  // Vitesse angulaire (changement de cap entre segments successifs)
   const dirs = vels.map((_, i) => {
     const p = points[i+1], pp = points[i];
     return [p.x-pp.x, p.y-pp.y, p.z-pp.z];
@@ -158,7 +156,7 @@ function computeDescriptors(points) {
   const p0 = points[0], pN = points[points.length-1];
   const distDirecte = Math.sqrt((pN.x-p0.x)**2 + (pN.y-p0.y)**2 + (pN.z-p0.z)**2);
   const distTotale = vels.reduce((s,v)=>s+v, 0);
-  const linearite = distTotale > 0 ? distDirecte / distTotale : 0;
+  const tortuosite = distTotale > 0 ? distDirecte / distTotale : 0;
 
   const xs = points.map(p=>p.x), ys = points.map(p=>p.y);
   const aire_exploration = (Math.max(...xs)-Math.min(...xs)) * (Math.max(...ys)-Math.min(...ys));
@@ -174,7 +172,7 @@ function computeDescriptors(points) {
     acceleration_moyenne:     avg(accels),
     vitesse_angulaire_moyenne: avg(angVels),
     erraticite:               acc_rms,
-    linearite,
+    tortuosite,
     aire_exploration,
     ratio_butinage,
     dist_totale: distTotale,
@@ -784,7 +782,7 @@ export default function BourdonTracker() {
       <style>{styles}</style>
       <div className="app">
         <div className="header">
-          <h1>🐝 BumbleBee</h1>
+          <h1>BumbleBee</h1>
           <span className="sub">Comparaison des trajectoires de bourdons</span>
         </div>
         <div className="main">
@@ -824,7 +822,7 @@ export default function BourdonTracker() {
             {/* Liste des bourdons */}
             <div className="section" style={{flex:1,overflowY:"auto"}}>
               <div className="section-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span>👥 Individus ({bees.length})</span>
+                <span>Individus ({bees.length})</span>
                 <div style={{display:"flex",gap:"5px",flexWrap:"wrap"}}>
                   <span onClick={() => setSelectedIds(new Set(bees.map(b=>b.id)))}
                     style={{cursor:"pointer",fontSize:"9px",color:C.text,background:C.ctrl,padding:"2px 6px",borderRadius:"4px"}}>

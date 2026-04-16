@@ -12,7 +12,7 @@ from sklearn.metrics import accuracy_score
 app = Flask(__name__)
 CORS(app)
 
-# Modèle de ML (Random Forest, je dois essayer isolation forest qui peut etre mieux pour detecter des anomalies)
+# Modèle de ML (Random Forest, je dois essayer isolation forest qui peut etre mieux pour detecter des anomalies) ou pas 
 model = RandomForestClassifier(n_estimators=50, random_state=42)
 X_train = []
 y_train = []
@@ -52,8 +52,9 @@ def upload_file():
             points = np.array([[p["x"], p["y"], p["z"]] for p in traj])
 
             if len(points) >= 3:
+                points_centered = points - points.mean(axis=0) #centrage des données pour le pca, à voir si je garde
                 pca = PCA(n_components=1)
-                pca.fit(points)
+                pca.fit(points_centered)
                 variance_expliquee = pca.explained_variance_ratio_[0]
                 linearite = float(variance_expliquee)
             else:
@@ -110,11 +111,32 @@ def upload_file():
             #tortuosite = dist_directe / dist_totale if dist_totale > 0 else 0
 
             #vitesse moyenne
+
+            #vitesses = [p.get("vitesse_ms", 0) for p in traj if p.get("vitesse_ms", 0) > 0]
+            #vitesse_moy = sum(vitesses) / len(vitesses) if vitesses else 0.0
+
             #vitesse max
+
+
+
+
+
             #acceleration moyenne
+
+
+
             #acceleration max
+
+
+
             #angle de changement de direction
+
+
+
             #altitude moyenne et variation d'altitude
+
+
+
             #nombre de changements de direction brusques ???
             #distance parcourue totale
             #temps passé à visiter les plantes
@@ -127,7 +149,7 @@ def upload_file():
 
 
 
-            # features pour ML
+            # features pour le ML
             features = [linearite, stabilite, score_visites, retour_ruche] #, tortuosite] à voir si ajout d'autres
 
             if group:
