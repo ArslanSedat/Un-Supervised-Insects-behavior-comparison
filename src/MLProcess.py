@@ -1,204 +1,270 @@
+"""
+Backend Flask — Analyse trajectoires de bourdons
+Pipeline : Features → StandardScaler → PCA → SVM (littérature écotoxicologie)
+Refs : Tosi et al. 2017 Scientific Reports, Gill et al. 2012 Science, Batschelet 1981
+"""
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import json
-import math
+import json, math, warnings
 import numpy as np
 from scipy.spatial import ConvexHull
+from scipy.stats import mannwhitneyu, pearsonr
 from sklearn.decomposition import PCA
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import LeaveOneOut
+from sklearn.metrics import accuracy_score, roc_auc_score
+
+warnings.filterwarnings("ignore")
 
 app = Flask(__name__)
 CORS(app)
 
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-X_train = []
-y_train = []
-model_trained = False
+store = {
+    "temoin": {"feats": [], "ids": []},
+    "expose": {"feats": [], "ids": []},
+}
+
+FEAT_NAMES = [
+    "vitesse_moy", "vitesse_std", "stabilite", "acc_rms",
+    "tortuosite", "dist_totale", "msd_mean", "msd_slope",
+    "katz_fd", "rayon_giration", "aire", "z_std",
+    "entropie_angles", "autocorr_dir", "taux_immobilite", "linearite",
+]
 
 
-def compute_metrics(traj, ruche, plantes, stats):
-    if len(traj) < 2:
-        return None
-    
-    points = np.array([[p["x"], p["y"], p["z"]] for p in traj])
-    vitesses_list = [p.get("vitesse_ms", 0) for p in traj]
-    vitesses = np.array(vitesses_list)
-    accels_list = [p.get("acceleration_ms2", 0) for p in traj]
-    accels = np.array(accels_list)
-    
-    dx = np.diff(points[:, 0])
-    dy = np.diff(points[:, 1])
-    dz = np.diff(points[:, 2])
-    
-    dist_totale = float(np.sum(np.sqrt(dx**2 + dy**2 + dz**2)))
-    
-    p0 = points[0]
-    pN = points[-1]
-    dist_directe = float(np.sqrt((pN[0] - p0[0])**2 + (pN[1] - p0[1])**2 + (pN[2] - p0[2])**2))
-    tortuosite = dist_directe / dist_totale if dist_totale > 0 else 0.0
-    
-    vitesses_pos = vitesses[vitesses > 0]
-    vitesse_moy = float(np.mean(vitesses_pos)) if len(vitesses_pos) > 0 else 0.0
-    vitesse_max = float(np.max(vitesses)) if len(vitesses) > 0 else 0.0
-    
-    stabilite_val = vitesses_pos[vitesses_pos > 0]
-    if len(stabilite_val) > 1:
-        moy_v = np.mean(stabilite_val)
-        ecart_type = np.std(stabilite_val)
-        stabilite = max(0.0, 1.0 - (ecart_type / moy_v if moy_v > 0 else 1.0))
-    else:
-        stabilite = 0.0
-    
-    accels_pos = accels[accels > 0]
-    acc_moy = float(np.mean(accels_pos)) if len(accels_pos) > 0 else 0.0
-    acc_max = float(np.max(accels)) if len(accels) > 0 else 0.0
-    
-    pts_xy = points[:, :2]
-    unique_pts = np.unique(pts_xy, axis=0)
-    if len(unique_pts) >= 3:
-        try:
-            hull = ConvexHull(unique_pts)
-            aire = float(hull.volume)
-        except:
-            aire = float((np.max(points[:, 0]) - np.min(points[:, 0])) * (np.max(points[:, 1]) - np.min(points[:, 1])))
+def compute_features(traj):
+    if len(traj) < 10:
+        return None, None
+    pts = np.array([[p["x"], p["y"], p["z"]] for p in traj], dtype=float)
+    vit = np.array([p.get("vitesse_ms", 0) for p in traj], dtype=float)
+    acc = np.array([p.get("acceleration_ms2", 0) for p in traj], dtype=float)
+    n = len(pts)
+
+    vit_pos     = vit[vit > 0]
+    vitesse_moy = float(np.mean(vit_pos)) if len(vit_pos) > 0 else 0.0
+    vitesse_std = float(np.std(vit_pos))  if len(vit_pos) > 1 else 0.0
+    stabilite   = max(0.0, 1.0 - vitesse_std / vitesse_moy) if vitesse_moy > 0 else 0.0
+    acc_rms     = float(np.sqrt(np.mean(acc ** 2)))
+
+    diffs       = np.diff(pts, axis=0)
+    seg         = np.sqrt(np.sum(diffs ** 2, axis=1))
+    dist_totale = float(np.sum(seg))
+    dist_dir    = float(np.linalg.norm(pts[-1] - pts[0]))
+    tortuosite  = dist_dir / dist_totale if dist_totale > 0 else 0.0
+
+    lags     = [1, 5, 10, 20, 50]
+    msds     = [float(np.mean(np.sum((pts[l:] - pts[:-l]) ** 2, axis=1))) if l < n else 0.0 for l in lags]
+    msd_mean  = float(np.mean(msds))
+    msd_slope = float(np.polyfit(np.log1p(lags), np.log1p(msds), 1)[0])
+
+    d_max   = float(np.max(np.sqrt(np.sum((pts - pts[0]) ** 2, axis=1))))
+    katz_fd = (math.log10(n) / (math.log10(n) + math.log10(d_max / dist_totale))
+               if d_max > 0 and dist_totale > 0 and n > 1 else 1.0)
+
+    centroid  = pts.mean(axis=0)
+    rayon_gir = float(np.sqrt(np.mean(np.sum((pts - centroid) ** 2, axis=1))))
+
+    pts_xy = np.unique(pts[:, :2], axis=0)
+    if len(pts_xy) >= 3:
+        try:    aire = float(ConvexHull(pts_xy).volume)
+        except: aire = 0.0
     else:
         aire = 0.0
-    
-    if len(points) >= 3:
-        points_centered = points - points.mean(axis=0)
-        pca = PCA(n_components=1)
-        pca.fit(points_centered)
-        linearite = float(pca.explained_variance_ratio_[0])
-    else:
-        linearite = 0.0
-    
-    visites = stats.get("visites_plantes", 0)
-    if visites == 0 and len(plantes) > 0:
-        score_visites = -0.5
-    else:
-        score_visites = 1.0
-    
-    dist_ruche_fin = math.sqrt((pN[0] - ruche["x"])**2 + (pN[1] - ruche["y"])**2 + (pN[2] - ruche.get("z", 0))**2)
-    retour_ruche = 1.0 if dist_ruche_fin < 0.5 else max(0.0, 1.0 - dist_ruche_fin)
-    
-    metrics = {
-        "vitesse_moy": round(vitesse_moy, 4),
-        "vitesse_max": round(vitesse_max, 4),
-        "acc_moy": round(acc_moy, 4),
-        "acc_max": round(acc_max, 4),
-        "linearite": round(linearite, 4),
-        "tortuosite": round(tortuosite, 4),
-        "aire": round(aire, 4),
-        "stabilite": round(stabilite, 3),
-        "dist_totale": round(dist_totale, 3),
-        "visites": visites,
-        "retour_ruche": round(retour_ruche, 3),
+
+    z_std = float(np.std(pts[:, 2]))
+
+    dx = np.diff(pts[:, 0]); dy = np.diff(pts[:, 1])
+    angles = np.arctan2(dy, dx)
+    adiffs = np.diff(angles)
+    adiffs = (adiffs + np.pi) % (2 * np.pi) - np.pi
+    hist, _ = np.histogram(adiffs, bins=16, range=(-np.pi, np.pi))
+    h        = hist / (hist.sum() + 1e-10)
+    entropie = float(-np.sum(h[h > 0] * np.log2(h[h > 0])))
+
+    nxy      = np.sqrt(dx ** 2 + dy ** 2) + 1e-10
+    dx_      = dx / nxy
+    try:    autocorr = float(pearsonr(dx_[:-1], dx_[1:])[0]) if len(dx_) > 2 else 0.0
+    except: autocorr = 0.0
+
+    taux_imm = float(np.mean(vit < 0.01))
+
+    pca1 = PCA(n_components=1)
+    pca1.fit(pts - pts.mean(axis=0))
+    linearite = float(pca1.explained_variance_ratio_[0])
+
+    feat_dict = {k: round(v, 5) for k, v in zip(FEAT_NAMES, [
+        vitesse_moy, vitesse_std, stabilite, acc_rms,
+        tortuosite, dist_totale, msd_mean, msd_slope,
+        katz_fd, rayon_gir, aire, z_std,
+        entropie, autocorr, taux_imm, linearite,
+    ])}
+    feat_vec = [
+        vitesse_moy, vitesse_std, stabilite, acc_rms,
+        tortuosite, dist_totale, msd_mean, msd_slope,
+        katz_fd, rayon_gir, aire, z_std,
+        entropie, autocorr, taux_imm, linearite,
+    ]
+    return feat_dict, feat_vec
+
+
+def run_pca_svm(feats_t, feats_e, ids_t, ids_e):
+    X_t   = np.array(feats_t, dtype=float)
+    X_e   = np.array(feats_e, dtype=float)
+    X_all = np.vstack([X_t, X_e])
+    y_all = np.array([0] * len(X_t) + [1] * len(X_e))
+    ids_all = ids_t + ids_e
+
+    scaler   = StandardScaler()
+    X_scaled = scaler.fit_transform(X_all)
+
+    pca_full = PCA(n_components=min(X_scaled.shape[0] - 1, X_scaled.shape[1]))
+    pca_full.fit(X_scaled)
+    all_var  = [round(float(v), 4) for v in pca_full.explained_variance_ratio_]
+
+    pca2   = PCA(n_components=2, random_state=42)
+    X_2d   = pca2.fit_transform(X_scaled)
+    var_exp = [round(float(v), 4) for v in pca2.explained_variance_ratio_]
+    cum_var = list(np.round(np.cumsum(pca2.explained_variance_ratio_), 4))
+
+    loadings = {
+        "feature_names": FEAT_NAMES,
+        "pc1": [round(float(v), 4) for v in pca2.components_[0]],
+        "pc2": [round(float(v), 4) for v in pca2.components_[1]],
     }
-    
-    features = [linearite, stabilite, score_visites, retour_ruche]
-    
-    return metrics, features
+
+    svm = SVC(kernel="rbf", C=1.0, gamma="scale", probability=True, random_state=42)
+
+    loo = LeaveOneOut()
+    preds, probas, truths = [], [], []
+    for tr, te in loo.split(X_2d):
+        s = SVC(kernel="rbf", C=1.0, gamma="scale", probability=True, random_state=42)
+        s.fit(X_2d[tr], y_all[tr])
+        preds.append(int(s.predict(X_2d[te])[0]))
+        probas.append(float(s.predict_proba(X_2d[te])[0][1]))
+        truths.append(int(y_all[te[0]]))
+
+    acc = float(accuracy_score(truths, preds))
+    try:    auc = float(roc_auc_score(truths, probas))
+    except: auc = 0.5
+
+    svm.fit(X_2d, y_all)
+
+    mg = 0.8
+    x1mn, x1mx = X_2d[:, 0].min() - mg, X_2d[:, 0].max() + mg
+    x2mn, x2mx = X_2d[:, 1].min() - mg, X_2d[:, 1].max() + mg
+    res = 65
+    xx, yy = np.meshgrid(np.linspace(x1mn, x1mx, res), np.linspace(x2mn, x2mx, res))
+    grid   = np.c_[xx.ravel(), yy.ravel()]
+    Z_prob = svm.predict_proba(grid)[:, 1].reshape(res, res)
+
+    svm_pred  = svm.predict(X_2d)
+    svm_proba = svm.predict_proba(X_2d)[:, 1]
+    svm_dist  = svm.decision_function(X_2d)
+
+    per_bee = {}
+    for i, bid in enumerate(ids_all):
+        per_bee[bid] = {
+            "group":         int(y_all[i]),
+            "svm_pred":      int(svm_pred[i]),
+            "svm_proba":     round(float(svm_proba[i]), 4),
+            "dist_frontier": round(float(svm_dist[i]), 4),
+            "is_normal":     bool(svm_pred[i] == 0),
+            "pca_x":         round(float(X_2d[i, 0]), 4),
+            "pca_y":         round(float(X_2d[i, 1]), 4),
+            "features":      {FEAT_NAMES[j]: round(float(X_all[i, j]), 5)
+                              for j in range(len(FEAT_NAMES))},
+        }
+
+    feat_disc = {}
+    for j, fname in enumerate(FEAT_NAMES):
+        vals_t = X_t[:, j]; vals_e = X_e[:, j]
+        try:    _, p_mw = mannwhitneyu(vals_t, vals_e, alternative="two-sided")
+        except: p_mw = 1.0
+        nt, ne = len(vals_t), len(vals_e)
+        u1     = sum(1 if a > b else 0.5 if a == b else 0 for a in vals_t for b in vals_e)
+        rb     = (2 * u1 / (nt * ne) - 1) if nt > 0 and ne > 0 else 0.0
+        feat_disc[fname] = {
+            "p_mannwhitney":  round(float(p_mw), 4),
+            "effect_size_rb": round(float(rb), 4),
+            "pc1_loading":    round(float(pca2.components_[0][j]), 4),
+            "pc2_loading":    round(float(pca2.components_[1][j]), 4),
+            "mean_temoin":    round(float(np.mean(vals_t)), 5),
+            "mean_expose":    round(float(np.mean(vals_e)), 5),
+            "std_temoin":     round(float(np.std(vals_t)), 5),
+            "std_expose":     round(float(np.std(vals_e)), 5),
+        }
+
+    return {
+        "pca": {
+            "variance_explained": var_exp,
+            "cumulative_variance": cum_var,
+            "all_variance":        all_var[:10],
+            "loadings":            loadings,
+        },
+        "svm": {
+            "accuracy_loo": round(acc, 4),
+            "auc_loo":      round(auc, 4),
+            "boundary": {
+                "xx":      [[round(float(v), 3) for v in row] for row in xx],
+                "yy":      [[round(float(v), 3) for v in row] for row in yy],
+                "Z_prob":  [[round(float(v), 3) for v in row] for row in Z_prob],
+                "x1_range": [round(float(x1mn), 3), round(float(x1mx), 3)],
+                "x2_range": [round(float(x2mn), 3), round(float(x2mx), 3)],
+            },
+            "per_bee":  per_bee,
+        },
+        "feature_discrimination": feat_disc,
+        "ids":        ids_all,
+        "labels":     [0] * len(feats_t) + [1] * len(feats_e),
+        "n_normal":   int(np.sum(svm_pred == 0)),
+        "n_abnormal": int(np.sum(svm_pred == 1)),
+    }
 
 
 @app.route("/upload", methods=["POST"])
 def upload_file():
-    global model_trained, X_train, y_train
-    
     try:
-        print(f"[DEBUG] Upload reçu. Model trained: {model_trained}, Samples: {len(X_train)}")
-        file = request.files["file"]
-        group = request.form.get("group")
-        data = json.load(file)
-        if group:
-            data["group"] = group
+        file  = request.files["file"]
+        group = request.form.get("group", "")
+        data  = json.load(file)
 
-        cage = data.get("metadonnees", {}).get("cage_experimentale", {})
-        ruche = cage.get("ruche_position_m", {"x": 0.1, "y": 0.1, "z": 0})
-        plantes = cage.get("plantes", [])
-        for key in data:
+        for key, val in data.items():
             if not key.startswith("bourdon_"):
                 continue
-            bourdon = data[key]
-            traj = bourdon.get("trajectoire", [])
-            stats = bourdon.get("statistiques", {})
-
-            if len(traj) < 2:
-                bourdon["efficacite"] = 0.0
+            feat_dict, feat_vec = compute_features(val.get("trajectoire", []))
+            if feat_dict is None:
                 continue
+            val["metriques"] = feat_dict
+            bee_id = val.get("id", key)
+            if group in store and feat_vec is not None:
+                store[group]["feats"].append(feat_vec)
+                store[group]["ids"].append(bee_id)
 
-            result = compute_metrics(traj, ruche, plantes, stats)
-            if result is None:
-                continue
-            
-            metrics, features = result
-            
-            for key_m, val_m in metrics.items():
-                bourdon[key_m] = val_m
-
-            if group:
-                label = 1 if group == "expose" else 0
-                X_train.append(features)
-                y_train.append(label)
-                print(f"[DEBUG] Données d'entraînement ajoutées. Total: {len(X_train)} samples")
-
-            if model_trained :
-                try:
-                    pred = int(model.predict([features])[0])
-                    proba = float(model.predict_proba([features])[0][1])
-                    bourdon["ml_prediction"] = pred
-                    bourdon["ml_confidence"] = round(proba, 3)
-                    print(f"[DEBUG] Prédiction ML: {pred} (confiance: {proba:.3f})")
-                except Exception as pe:
-                    print(f"[ERROR] Prédiction ML échouée: {str(pe)}")
-                    bourdon["ml_prediction"] = None
-                    bourdon["ml_confidence"] = None
-            else:
-                bourdon["ml_prediction"] = None
-                bourdon["ml_confidence"] = None
-
-            if group:
-                bourdon["group"] = group
-
-        if len(X_train) > 10 :
+        ml_result = None
+        if store["temoin"]["feats"] and store["expose"]["feats"]:
             try:
-                print(f"[DEBUG] Début du training ML avec {len(X_train)} samples")
-                X_array = np.array(X_train, dtype=float)
-                y_array = np.array(y_train, dtype=int)
-                X_tr, X_te, y_tr, y_te = train_test_split(X_array, y_array, test_size=0.3, random_state=42)
-                model.fit(X_tr, y_tr)
-                y_pred = model.predict(X_te)
-                accuracy = accuracy_score(y_te, y_pred)
-                print(f"[DEBUG] Training réussi! Accuracy: {accuracy:.3f}")
-                model_trained = True
-                X_train = []
-                y_train = []
-                print(f"[DEBUG] Données d'entraînement réinitialisées")
-            except Exception as te:
-                print(f"[ERROR] Model training failed: {str(te)}")
+                ml_result = run_pca_svm(
+                    store["temoin"]["feats"], store["expose"]["feats"],
+                    store["temoin"]["ids"],   store["expose"]["ids"],
+                )
+            except Exception as e:
+                import traceback; traceback.print_exc()
 
+        data["_ml"] = ml_result
         return jsonify(data)
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/compare", methods=["POST"])
-def compare():
-    try:
-        body = request.get_json()
-        temoin_data = body.get("temoin", {})
-        expose_data = body.get("expose", {})
-
-        return jsonify({"status": "ok","message": "Comparaison effectuée"})
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+@app.route("/reset", methods=["POST"])
+def reset():
+    store["temoin"] = {"feats": [], "ids": []}
+    store["expose"] = {"feats": [], "ids": []}
+    return jsonify({"status": "ok"})
 
 
 if __name__ == "__main__":

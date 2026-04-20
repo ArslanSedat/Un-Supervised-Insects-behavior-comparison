@@ -1,389 +1,421 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
-// ─── PALETTE ─────────────────────────────────────────────────────────────────
+// ─── PALETTE ──────────────────────────────────────────────────────────────────
 const C = {
-  bg:       "#f9fafb",
-  panel:    "#ffffff",
-  border:   "#e5e9ef",
-  accent:   "#2563eb",
-  text:     "#111827",
-  muted:    "#6b7280",
-  temoin:   "#0ea5e9",
-  expose:   "#ef4444",
-  green:    "#10b981",
-  orange:   "#f59e0b",
-  violet:   "#8b5cf6",
+  bg:      "#f9fafb", panel:  "#ffffff", border: "#e5e9ef",
+  accent:  "#2563eb", text:   "#111827", muted:  "#6b7280",
+  temoin:  "#0ea5e9", expose: "#ef4444", green:  "#10b981",
+  orange:  "#f59e0b", normal: "#10b981", abnorm: "#f97316",
 };
 
-const styles = `
+const FEAT_LABELS = {
+  vitesse_moy:"Vitesse moy.", vitesse_std:"Vitesse std", stabilite:"Stabilité",
+  acc_rms:"Accél. RMS", tortuosite:"Tortuosité", dist_totale:"Dist. totale",
+  msd_mean:"MSD moyen", msd_slope:"MSD pente", katz_fd:"Dim. fractale (Katz)",
+  rayon_giration:"Rayon giration", aire:"Aire convexe", z_std:"Variance Z",
+  entropie_angles:"Entropie angulaire", autocorr_dir:"Autocorr. direction",
+  taux_immobilite:"Taux immobilité", linearite:"Linéarité PCA",
+};
+
+const css = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap');
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:${C.bg};color:${C.text};font-family:'DM Sans',sans-serif;font-size:13px}
-  ::-webkit-scrollbar{width:5px;height:5px}
-  ::-webkit-scrollbar-track{background:transparent}
-  ::-webkit-scrollbar-thumb{background:${C.border};border-radius:3px}
-  .app{display:grid;grid-template-rows:52px 1fr;height:100vh;overflow:hidden}
-  .header{background:${C.panel};border-bottom:1px solid ${C.border};display:flex;align-items:center;padding:0 20px;gap:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-  .header h1{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;letter-spacing:-.4px;color:${C.text}}
-  .header .sub{color:${C.muted};font-size:11px}
-  .main{display:grid;grid-template-columns:270px 1fr 250px;overflow:hidden}
-  .sidebar{background:${C.panel};border-right:1px solid ${C.border};overflow-y:auto;display:flex;flex-direction:column}
-  .section{border-bottom:1px solid ${C.border};padding:14px}
-  .section-title{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:${C.muted};margin-bottom:10px}
-  .bee-list{display:flex;flex-direction:column;gap:3px}
-  .bee-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background .12s;border:1px solid transparent;user-select:none}
+  ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:${C.border};border-radius:3px}
+  .app{display:grid;grid-template-rows:48px 1fr;height:100vh;overflow:hidden}
+  .hdr{background:${C.panel};border-bottom:1px solid ${C.border};display:flex;align-items:center;padding:0 18px;gap:12px}
+  .hdr h1{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;letter-spacing:-.3px}
+  .main{display:grid;grid-template-columns:248px 1fr 232px;overflow:hidden}
+  .side{background:${C.panel};border-right:1px solid ${C.border};overflow-y:auto;display:flex;flex-direction:column}
+  .sec{border-bottom:1px solid ${C.border};padding:12px}
+  .sec-title{font-family:'Syne',sans-serif;font-size:9px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:${C.muted};margin-bottom:8px}
+  .bee-item{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:6px;cursor:pointer;border:1px solid transparent;user-select:none;transition:background .1s}
   .bee-item:hover{background:${C.bg}}
-  .bee-item.selected{background:${C.bg};border-color:${C.accent};box-shadow:0 0 0 2px rgba(37,99,235,.08)}
+  .bee-item.sel{background:${C.bg};border-color:${C.accent}}
   .center{display:flex;flex-direction:column;overflow:hidden}
-  .tabs{display:flex;border-bottom:1px solid ${C.border};background:${C.panel}}
-  .tab{padding:11px 18px;font-size:11px;cursor:pointer;border-bottom:2px solid transparent;color:${C.muted};transition:all .15s;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:.2px}
-  .tab.active{color:${C.accent};border-bottom-color:${C.accent}}
-  .canvas-wrap{flex:1;position:relative;overflow:hidden;background:${C.bg};min-height:300px}
-  canvas{position:absolute;top:0;left:0}
-  .right-panel{background:${C.panel};border-left:1px solid ${C.border};overflow-y:auto;padding:14px}
-  .stat-row{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-bottom:1px solid ${C.border}20}
-  .stat-label{color:${C.muted};font-size:10px;font-weight:500}
-  .stat-val{font-size:12px;font-weight:700;font-family:'DM Mono',monospace;color:${C.text}}
-  .bar-track{height:4px;background:${C.bg};border-radius:2px;margin-top:4px;overflow:hidden;border:1px solid ${C.border}}
-  .bar-fill{height:100%;border-radius:2px;transition:width .5s}
+  .tabs{display:flex;border-bottom:1px solid ${C.border};background:${C.panel};overflow-x:auto;flex-shrink:0}
+  .tab{padding:9px 14px;font-size:10px;cursor:pointer;border-bottom:2px solid transparent;color:${C.muted};font-family:'Syne',sans-serif;font-weight:700;letter-spacing:.3px;white-space:nowrap;flex-shrink:0}
+  .tab.on{color:${C.accent};border-bottom-color:${C.accent}}
+  .cvs-wrap{flex:1;position:relative;overflow:hidden;min-height:0}
+  canvas{position:absolute;top:0;left:0;width:100%;height:100%}
+  .right{background:${C.panel};border-left:1px solid ${C.border};overflow-y:auto;padding:12px}
+  .sr{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid ${C.border}18}
+  .sl{color:${C.muted};font-size:10px}
+  .sv{font-size:11px;font-weight:700;font-family:'DM Mono',monospace}
   .no-data{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:${C.muted};gap:8px;text-align:center;padding:32px}
-  .json-input-group{background:${C.bg};border:1px solid ${C.border};border-radius:8px;padding:10px;margin-bottom:10px}
-  .json-input-label{font-size:10px;font-weight:700;color:${C.text};text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;display:flex;align-items:center;gap:6px}
-  .json-input-area{width:100%;min-height:60px;padding:7px;border:1px solid ${C.border};border-radius:5px;font-family:'DM Mono',monospace;font-size:10px;color:${C.text};background:${C.panel};resize:vertical}
-  .json-input-area:focus{outline:none;border-color:${C.accent}}
-  .impact-metric{background:${C.bg};border:1px solid ${C.border};border-radius:8px;padding:11px;margin-bottom:8px}
-  .impact-metric-title{font-size:10px;font-weight:700;color:${C.muted};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:4px}
-  .dual-bar-row{display:flex;align-items:center;gap:8px;font-size:10px;margin-bottom:4px}
-  .dual-bar-label{width:50px;text-align:right;font-weight:600;flex-shrink:0;font-family:'DM Mono',monospace;font-size:9px}
-  .dual-bar-track{flex:1;height:9px;background:${C.panel};border-radius:5px;overflow:hidden;border:1px solid ${C.border}}
-  .dual-bar-fill{height:100%;border-radius:5px;transition:width .5s}
-  .dual-bar-val{width:56px;font-size:9px;color:${C.muted};font-weight:600;font-family:'DM Mono',monospace}
-  .badge{border-radius:4px;padding:2px 7px;font-size:9px;font-weight:700;display:inline-block}
-  .sig-badge{font-size:8px;padding:1px 5px;border-radius:3px;font-weight:700;font-family:'DM Mono',monospace}
+  .chip{font-size:8px;padding:1px 6px;border-radius:10px;font-weight:700;display:inline-flex;align-items:center}
+  .btn-grp{display:flex;gap:4px;flex-wrap:wrap}
+  .btn{font-size:9px;padding:3px 9px;border-radius:4px;cursor:pointer;font-weight:700;border:1px solid ${C.border};background:${C.panel};color:${C.muted};transition:all .1s}
+  .btn.on{border-color:${C.accent};background:rgba(37,99,235,.07);color:${C.accent}}
+  .bar-wrap{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+  .bar-lbl{width:116px;font-size:10px;color:${C.muted};text-align:right;flex-shrink:0;font-family:'DM Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar-trk{flex:1;height:10px;background:${C.bg};border-radius:3px;overflow:hidden;border:1px solid ${C.border};position:relative}
+  .bar-val{width:44px;font-size:9px;color:${C.muted};font-family:'DM Mono',monospace;text-align:right}
+  .tbl{width:100%;border-collapse:collapse;font-size:10px}
+  .tbl th{text-align:left;padding:4px 6px;border-bottom:1px solid ${C.border};font-family:'Syne',sans-serif;font-size:9px;color:${C.muted};text-transform:uppercase;letter-spacing:.8px}
+  .tbl td{padding:4px 6px;border-bottom:1px solid ${C.border}18;font-family:'DM Mono',monospace}
+  .tbl tr:hover td{background:${C.bg}}
 `;
 
-// ─── PARSER JSON (métriques backend) ─────────────────────────────────────────
-function parseJSON(json) {
-  const meta   = json.metadonnees || {};
-  const cage   = meta.cage_experimentale || {};
-  const plantes = cage.plantes || [];
-  const flowers = plantes.map(p => [p.x, p.y, p.z ?? 0, p.id]);
-  const ruche   = cage.ruche_position_m
+// ─── PARSE JSON ───────────────────────────────────────────────────────────────
+function parseJSON(json, groupOverride) {
+  const cage = json.metadonnees?.cage_experimentale || {};
+  const ruche = cage.ruche_position_m
     ? [cage.ruche_position_m.x, cage.ruche_position_m.y, cage.ruche_position_m.z ?? 0]
     : [0.1, 0.1, 0];
   const worldSize = cage.dimensions_m
     ? [cage.dimensions_m.longueur, cage.dimensions_m.largeur, cage.dimensions_m.hauteur]
     : [2.5, 2.5, 1.8];
+  const flowers = (cage.plantes || []).map(p => [p.x, p.y, p.z ?? 0, p.id]);
 
   const bees = [];
   for (const [key, val] of Object.entries(json)) {
     if (!key.startsWith("bourdon_")) continue;
-    const traj = val.trajectoire || [];
-    const m    = val.metriques   || {};
-    const stats= val.statistiques || {};
-
-    const points = traj.map(p => ({ x:p.x, y:p.y, z:p.z, t:p.t??0, v:p.vitesse_ms??0 }));
-
+    const group  = groupOverride || (val.groupe === "temoin" ? "temoin" : "expose");
+    const metr   = val.metriques || {};
+    const stats  = val.statistiques || {};
+    const points = (val.trajectoire || []).map(p => ({ x:p.x, y:p.y, z:p.z, v:p.vitesse_ms??0 }));
     bees.push({
-      id:    val.id  || key,
-      key,
-      group: val.groupe === "temoin" ? "temoin" : "expose",
-      metriques: m,
+      id: val.id || key, key, group, metriques: metr, points,
       stats: {
-        vitesse_moy:    m.vitesse_moy    ?? stats.vitesse_moyenne_ms  ?? 0,
-        vitesse_max:    m.vitesse_max    ?? stats.vitesse_max_ms      ?? 0,
-        acc_moy:        m.acceleration_moy ?? stats.acceleration_moyenne_ms2 ?? 0,
-        visites:        m.total_visites_plantes ?? stats.visites_plantes ?? 0,
-        linearite:      m.linearite_pca  ?? stats.linearite_pca       ?? 0,
-        tortuosite:     m.tortuosite     ?? 0,
-        aire:           m.aire_exploration ?? 0,
-        stabilite:      m.stabilite_vitesse ?? 0,
-        dist_totale:    m.dist_totale    ?? 0,
-        retour_ruche:   m.retour_ruche_score ?? 0,
+        vitesse_moy:     metr.vitesse_moy     ?? stats.vitesse_moyenne_ms ?? 0,
+        vitesse_std:     metr.vitesse_std     ?? 0,
+        stabilite:       metr.stabilite       ?? 0,
+        acc_rms:         metr.acc_rms         ?? 0,
+        tortuosite:      metr.tortuosite      ?? 0,
+        dist_totale:     metr.dist_totale     ?? 0,
+        msd_mean:        metr.msd_mean        ?? 0,
+        msd_slope:       metr.msd_slope       ?? 0,
+        katz_fd:         metr.katz_fd         ?? 0,
+        rayon_giration:  metr.rayon_giration  ?? 0,
+        aire:            metr.aire            ?? 0,
+        z_std:           metr.z_std           ?? 0,
+        entropie_angles: metr.entropie_angles ?? 0,
+        autocorr_dir:    metr.autocorr_dir    ?? 0,
+        taux_immobilite: metr.taux_immobilite ?? 0,
+        linearite:       metr.linearite       ?? 0,
       },
-      ml_prediction: val.ml_prediction ?? null,
-      ml_confidence: val.ml_confidence ?? null,
-      points,
     });
   }
-  return { meta, flowers, ruche, worldSize, bees };
+  return { flowers, ruche, worldSize, bees };
 }
 
 // ─── RENDU 3D ─────────────────────────────────────────────────────────────────
-function render3D(canvas, bees, flowers, rucheTemoin, rucheExpose, worldSize, selectedIds, hoverBee, panX, panY, zoom, rotX, rotY) {
+function render3D(canvas, bees, flowers, rucheT, rucheE, worldSize, selIds, hoverBee, panX, panY, zoom, rotX, rotY, colorMode, mlData) {
   const ctx = canvas.getContext("2d");
-  const W = canvas.width  = canvas.offsetWidth;
-  const H = canvas.height = canvas.offsetHeight;
-  ctx.fillStyle = C.bg;
-  ctx.fillRect(0, 0, W, H);
-
-  const baseScale = Math.min(W * 0.75 / (worldSize[0] || 2.5), H * 0.75 / (worldSize[1] || 2.5));
-  const scale = baseScale * zoom;
-  const ox = W / 2 + panX;
-  const oy = H / 2 + panY;
-  const center = [worldSize[0]/2, worldSize[1]/2, worldSize[2]/2];
-  const cX = Math.cos(rotX), sX = Math.sin(rotX);
-  const cY = Math.cos(rotY), sY = Math.sin(rotY);
-
-  const project = ({x, y, z}) => {
-    let px = x - center[0], py = y - center[1], pz = z - center[2];
-    const xz = px*cY - py*sY;
-    const yz = px*sY + py*cY;
-    const yy = yz*cX - pz*sX;
-    const zz = yz*sX + pz*cX;
-    const persp = 1 / (1 - zz * 0.1);
-    return { x: ox + xz*scale*persp, y: oy + yy*scale*persp, depth: zz };
+  const W = canvas.width = canvas.offsetWidth, H = canvas.height = canvas.offsetHeight;
+  ctx.fillStyle = C.bg; ctx.fillRect(0,0,W,H);
+  const bs = Math.min(W*.75/(worldSize[0]||2.5), H*.75/(worldSize[1]||2.5));
+  const sc = bs * zoom, ox = W/2+panX, oy = H/2+panY;
+  const ctr = [worldSize[0]/2, worldSize[1]/2, worldSize[2]/2];
+  const cX=Math.cos(rotX),sX=Math.sin(rotX),cY=Math.cos(rotY),sY=Math.sin(rotY);
+  const proj = ({x,y,z}) => {
+    let px=x-ctr[0],py=y-ctr[1],pz=z-ctr[2];
+    const xz=px*cY-py*sY, yz=px*sY+py*cY;
+    const yy=yz*cX-pz*sX, zz=yz*sX+pz*cX;
+    const p=1/(1-zz*.1);
+    return {x:ox+xz*sc*p, y:oy+yy*sc*p};
   };
-
   // Grille
-  ctx.strokeStyle = C.border;
-  ctx.lineWidth = 0.5;
-  for (let i = 0; i <= 10; i++) {
-    const xi = worldSize[0]*i/10, yi = worldSize[1]*i/10;
-    const p1 = project({x:xi,y:0,z:0}), p2 = project({x:xi,y:worldSize[1],z:0});
-    const q1 = project({x:0,y:yi,z:0}), q2 = project({x:worldSize[0],y:yi,z:0});
-    ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(q1.x,q1.y); ctx.lineTo(q2.x,q2.y); ctx.stroke();
+  ctx.strokeStyle=C.border; ctx.lineWidth=.5;
+  for(let i=0;i<=8;i++){
+    const xi=worldSize[0]*i/8, yi=worldSize[1]*i/8;
+    const p1=proj({x:xi,y:0,z:0}),p2=proj({x:xi,y:worldSize[1],z:0});
+    const q1=proj({x:0,y:yi,z:0}),q2=proj({x:worldSize[0],y:yi,z:0});
+    ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(q1.x,q1.y);ctx.lineTo(q2.x,q2.y);ctx.stroke();
   }
-
-  // Fleurs (labellisées T/E selon le groupe du JSON chargé)
-  const flowerColors = { temoin: "#fbbf24", expose: "#f97316" };
-  flowers.forEach(([fx, fy, fz, fid, group]) => {
-    const p = project({x:fx, y:fy, z:fz});
-    const col = group === "expose" ? flowerColors.expose : flowerColors.temoin;
-    ctx.fillStyle = col;
-    ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 2*Math.PI); ctx.fill();
-    ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 8px DM Sans"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(`F${fid+1}`, p.x, p.y);
-    ctx.fillStyle = col;
-    ctx.font = "bold 9px DM Sans"; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-    ctx.fillText(group === "expose" ? "(E)" : "(T)", p.x+9, p.y-2);
+  // Plantes
+  flowers.forEach(([fx,fy,fz,fid])=>{
+    const p=proj({x:fx,y:fy,z:fz});
+    ctx.fillStyle="#fbbf24"; ctx.beginPath(); ctx.arc(p.x,p.y,5,0,2*Math.PI); ctx.fill();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=1.2; ctx.stroke();
+    ctx.fillStyle="#000"; ctx.font="bold 7px DM Sans"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(`F${fid+1}`,p.x,p.y);
   });
-
-  // Ruche témoin
-  const drawRuche = (pos, col, label) => {
-    if (!pos) return;
-    const p = project({x:pos[0], y:pos[1], z:pos[2]});
-    ctx.fillStyle = col;
-    ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, 2*Math.PI); ctx.fill();
-    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 10px DM Sans"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("🏠", p.x, p.y);
-    ctx.fillStyle = col;
-    ctx.font = "bold 9px DM Sans"; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-    ctx.fillText(label, p.x+11, p.y-2);
-  };
-  drawRuche(rucheTemoin, C.temoin, "Ruche T");
-  drawRuche(rucheExpose, C.expose, "Ruche E");
-
+  // Ruches
+  [[rucheT,C.temoin,"T"],[rucheE,C.expose,"E"]].forEach(([r,col,lbl])=>{
+    if(!r) return;
+    const p=proj({x:r[0],y:r[1],z:r[2]});
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(p.x,p.y,7,0,2*Math.PI); ctx.fill();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.font="bold 8px DM Sans"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("🏠",p.x,p.y);
+    ctx.fillStyle=col; ctx.font="bold 8px DM Sans"; ctx.textAlign="left"; ctx.textBaseline="bottom";
+    ctx.fillText("Ruche "+lbl,p.x+9,p.y-2);
+  });
   // Trajectoires
-  const hasSel = selectedIds.size > 0;
+  const hasSel = selIds.size > 0;
   bees.forEach(bee => {
     if (!bee.points.length) return;
-    const proj = bee.points.map(p => project(p));
-    const isSel = selectedIds.has(bee.id);
-    const isHov = hoverBee === bee.id;
-    ctx.lineWidth = isSel ? 2.5 : isHov ? 2 : 1.2;
-    ctx.strokeStyle = bee.group === "temoin" ? C.temoin : C.expose;
-    ctx.globalAlpha = hasSel ? (isSel ? 0.9 : 0.08) : (isHov ? 0.8 : 0.45);
-    ctx.setLineDash(bee.group === "expose" ? [4,4] : []);
-    ctx.beginPath();
-    proj.forEach((p,i) => i === 0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y));
-    ctx.stroke();
+    const pr = bee.points.map(p => proj(p));
+    const isSel = selIds.has(bee.id), isHov = hoverBee===bee.id;
+
+    // Couleur selon mode
+    let col;
+    const pbee = mlData?.svm?.per_bee?.[bee.id];
+    if (colorMode === "normal" && pbee) {
+      col = pbee.is_normal ? C.normal : C.abnorm;
+    } else {
+      col = bee.group === "temoin" ? C.temoin : C.expose;
+    }
+
+    ctx.lineWidth = isSel?2.5:isHov?2:1;
+    ctx.strokeStyle = col;
+    ctx.globalAlpha = hasSel?(isSel?.9:.07):(isHov?.8:.4);
+    ctx.setLineDash(bee.group==="expose"?[4,4]:[]);
+    ctx.beginPath(); pr.forEach((p,i)=>i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y)); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.globalAlpha = hasSel ? (isSel ? 1 : 0.1) : 1;
-    ctx.fillStyle = bee.group === "temoin" ? C.temoin : C.expose;
-    ctx.beginPath(); ctx.arc(proj[0].x,proj[0].y,3,0,2*Math.PI); ctx.fill();
-    ctx.beginPath(); ctx.arc(proj[proj.length-1].x,proj[proj.length-1].y,isSel?5:3,0,2*Math.PI); ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = hasSel?(isSel?1:.1):1;
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(pr[0].x,pr[0].y,3,0,2*Math.PI); ctx.fill();
+    ctx.beginPath(); ctx.arc(pr[pr.length-1].x,pr[pr.length-1].y,isSel?5:3,0,2*Math.PI); ctx.fill();
+    ctx.globalAlpha=1;
   });
 }
 
-// ─── HEATMAP ──────────────────────────────────────────────────────────────────
-function renderHeatmap(canvas, bees, flowers, rucheTemoin, rucheExpose, worldSize, selectedIds) {
-  const ctx = canvas.getContext("2d");
-  const W = canvas.width  = canvas.offsetWidth;
-  const H = canvas.height = canvas.offsetHeight;
-  ctx.fillStyle = "#1a1a2e"; ctx.fillRect(0,0,W,H);
+// ─── CANVAS PCA + SVM ─────────────────────────────────────────────────────────
+function PcaSvmCanvas({ mlData, colorMode, selIds, onClickBee }) {
+  const ref = useRef(null);
 
-  const active = selectedIds.size > 0 ? bees.filter(b=>selectedIds.has(b.id)) : bees;
-  if (!active.length) return;
+  useEffect(() => {
+    if (!ref.current || !mlData?.svm?.per_bee) return;
+    const canvas = ref.current;
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width = canvas.offsetWidth;
+    const H = canvas.height = canvas.offsetHeight;
+    ctx.fillStyle = C.panel; ctx.fillRect(0,0,W,H);
 
-  const density = new Float32Array(W*H);
-  const sigma = Math.max(W,H)*0.018;
+    const per_bee = mlData.svm.per_bee;
+    const bees_data = Object.entries(per_bee);
+    const xs = bees_data.map(([,b])=>b.pca_x);
+    const ys = bees_data.map(([,b])=>b.pca_y);
+    const { xx, yy, Z_prob, x1_range, x2_range } = mlData.svm.boundary;
 
-  active.forEach(bee => bee.points.forEach(p => {
-    const px = (p.x/worldSize[0])*W, py = (p.y/worldSize[1])*H;
-    const r = sigma*2.5;
-    const x0=Math.max(0,Math.floor(px-r)), x1=Math.min(W,Math.ceil(px+r));
-    const y0=Math.max(0,Math.floor(py-r)), y1=Math.min(H,Math.ceil(py+r));
-    for (let y=y0;y<y1;y++) for (let x=x0;x<x1;x++) {
-      const d = ((x-px)**2+(y-py)**2)/(2*sigma*sigma);
-      density[y*W+x] += Math.exp(-d);
+    const pad = {l:48, r:16, t:20, b:44};
+    const toX = v => pad.l + (v-x1_range[0])/(x1_range[1]-x1_range[0])*(W-pad.l-pad.r);
+    const toY = v => H-pad.b - (v-x2_range[0])/(x2_range[1]-x2_range[0])*(H-pad.t-pad.b);
+
+    // Fond coloré (score SVM)
+    const res = Z_prob.length;
+    const cw = (W-pad.l-pad.r)/res, ch = (H-pad.t-pad.b)/res;
+    Z_prob.forEach((row, ri) => row.forEach((p, ci) => {
+      const px = pad.l + ci*cw, py = H-pad.b - (ri+1)*ch;
+      const r = Math.floor(p*220), g = Math.floor((1-p)*180);
+      ctx.fillStyle = `rgba(${r},${g},60,0.18)`;
+      ctx.fillRect(px, py, cw+1, ch+1);
+    }));
+
+    // Frontière SVM (contour p=0.5)
+    ctx.strokeStyle = "#555"; ctx.lineWidth = 1.5; ctx.setLineDash([5,3]);
+    for (let ri=0; ri<res-1; ri++) for (let ci=0; ci<res-1; ci++) {
+      const p00=Z_prob[ri][ci], p10=Z_prob[ri+1][ci];
+      if ((p00<.5&&p10>=.5)||(p00>=.5&&p10<.5)) {
+        const px1=pad.l+ci*cw+cw/2, py1=H-pad.b-(ri)*ch-ch/2;
+        const px2=pad.l+ci*cw+cw/2, py2=H-pad.b-(ri+1)*ch-ch/2;
+        ctx.beginPath();ctx.moveTo(px1,py1);ctx.lineTo(px2,py2);ctx.stroke();
+      }
     }
-  }));
+    ctx.setLineDash([]);
 
-  const maxD = Math.max(...density)||1;
-  const img  = ctx.createImageData(W,H);
-  for (let i=0;i<W*H;i++) {
-    const n = Math.sqrt(density[i]/maxD);
-    let r,g,b;
-    if (n<0.25)      { const t=n/0.25;    r=0;           g=Math.floor(80+t*120); b=255; }
-    else if (n<0.5)  { const t=(n-.25)/.25; r=0;         g=255;                  b=Math.floor(255*(1-t)); }
-    else if (n<0.75) { const t=(n-.5)/.25;  r=Math.floor(t*255); g=255;         b=0; }
-    else             { const t=(n-.75)/.25; r=255; g=Math.floor(255*(1-t*.6));  b=0; }
-    img.data[i*4]=r; img.data[i*4+1]=g; img.data[i*4+2]=b; img.data[i*4+3]=200;
-  }
-  ctx.putImageData(img,0,0);
+    // Axes
+    ctx.strokeStyle=C.border; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,H-pad.b); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b); ctx.lineTo(W-pad.r,H-pad.b); ctx.stroke();
 
-  const drawFlower = ([fx,fy,fz,fid,group]) => {
-    const px=(fx/worldSize[0])*W, py=(fy/worldSize[1])*H;
-    ctx.fillStyle= group==="expose"?"#f97316":"#fbbf24";
-    ctx.beginPath(); ctx.arc(px,py,6,0,2*Math.PI); ctx.fill();
-    ctx.strokeStyle="#000"; ctx.lineWidth=1.5; ctx.stroke();
-    ctx.fillStyle="#000"; ctx.font="bold 8px DM Sans"; ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText(`F${fid+1}`,px,py);
-  };
-  flowers.forEach(drawFlower);
+    // Labels axes
+    const varE = mlData.pca.variance_explained;
+    ctx.fillStyle=C.muted; ctx.font="10px DM Sans"; ctx.textAlign="center";
+    ctx.fillText(`PC1 (${(varE[0]*100).toFixed(1)}%)`, (pad.l+W-pad.r)/2, H-10);
+    ctx.save(); ctx.translate(12, (pad.t+H-pad.b)/2); ctx.rotate(-Math.PI/2);
+    ctx.fillText(`PC2 (${(varE[1]*100).toFixed(1)}%)`, 0, 0); ctx.restore();
 
-  const drawRucheHM = (pos, col, label) => {
-    if (!pos) return;
-    const px=(pos[0]/worldSize[0])*W, py=(pos[1]/worldSize[1])*H;
-    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(px,py,9,0,2*Math.PI); ctx.fill();
-    ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
-    ctx.fillStyle="#fff"; ctx.font="bold 10px DM Sans"; ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText("🏠",px,py);
-    ctx.fillStyle=col; ctx.font="bold 9px DM Sans"; ctx.textAlign="left"; ctx.textBaseline="bottom";
-    ctx.fillText(label,px+11,py-2);
-  };
-  drawRucheHM(rucheTemoin, C.temoin, "Ruche T");
-  drawRucheHM(rucheExpose, C.expose, "Ruche E");
+    // Points
+    bees_data.forEach(([id, b]) => {
+      const px = toX(b.pca_x), py = toY(b.pca_y);
+      const isSel = selIds?.has(id);
+
+      let col;
+      if (colorMode === "normal") {
+        col = b.is_normal ? C.normal : C.abnorm;
+      } else if (colorMode === "group") {
+        col = b.group === 0 ? C.temoin : C.expose;
+      } else {
+        col = b.group === 0 ? C.temoin : C.expose;
+      }
+
+      ctx.fillStyle = col;
+      ctx.strokeStyle = isSel ? C.accent : "#fff";
+      ctx.lineWidth = isSel ? 2.5 : 1.2;
+      ctx.globalAlpha = 0.9;
+
+      // Forme : groupe (cercle=témoin, triangle=exposé)
+      ctx.beginPath();
+      if (b.group === 0) {
+        ctx.arc(px, py, isSel?8:6, 0, 2*Math.PI);
+      } else {
+        const s=isSel?8:6;
+        ctx.moveTo(px,py-s); ctx.lineTo(px+s,py+s); ctx.lineTo(px-s,py+s);
+        ctx.closePath();
+      }
+      ctx.fill(); ctx.stroke();
+      ctx.globalAlpha=1;
+
+      // Label
+      ctx.fillStyle = C.text; ctx.font="bold 9px DM Mono"; ctx.textAlign="center";
+      ctx.fillText(id.replace("BE-",""), px, py-11);
+    });
+  }, [mlData, colorMode, selIds]);
+
+  const handleClick = useCallback(e => {
+    if (!ref.current || !mlData?.svm?.per_bee) return;
+    const rect = ref.current.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const W = ref.current.offsetWidth, H = ref.current.offsetHeight;
+    const { x1_range, x2_range } = mlData.svm.boundary;
+    const pad = {l:48, r:16, t:20, b:44};
+    const toX = v => pad.l + (v-x1_range[0])/(x1_range[1]-x1_range[0])*(W-pad.l-pad.r);
+    const toY = v => H-pad.b - (v-x2_range[0])/(x2_range[1]-x2_range[0])*(H-pad.t-pad.b);
+    let best=null, bestD=16;
+    Object.entries(mlData.svm.per_bee).forEach(([id,b]) => {
+      const d=Math.hypot(toX(b.pca_x)-mx, toY(b.pca_y)-my);
+      if(d<bestD){bestD=d;best=id;}
+    });
+    if(best) onClickBee(best, e);
+  }, [mlData, onClickBee]);
+
+  if (!mlData?.svm?.per_bee) return (
+    <div className="no-data"><span style={{fontSize:26}}>📊</span><span>Chargez les deux fichiers JSON<br/>pour voir le graphe PCA + SVM.</span></div>
+  );
+  return <canvas ref={ref} style={{width:"100%",height:"100%",position:"absolute",top:0,left:0,cursor:"crosshair"}} onClick={handleClick}/>;
 }
 
-// ─── COMPOSANTS UI ────────────────────────────────────────────────────────────
-function DualBar({ label, temoinVal, exposeVal, maxVal, unit="", decimals=3, tooltip, sig }) {
-  const tPct = maxVal>0 ? Math.min((temoinVal??0)/maxVal*100,100) : 0;
-  const ePct = maxVal>0 ? Math.min((exposeVal??0)/maxVal*100,100) : 0;
-  const fmt  = v => v!=null ? v.toFixed(decimals) : "—";
-  const sigCol = sig!=null ? (sig<0.05 ? C.expose : sig<0.1 ? C.orange : C.muted) : C.muted;
+// ─── ONGLET FEATURES DISCRIMINATION ─────────────────────────────────────────
+function FeatDiscTab({ mlData }) {
+  const [sort, setSort] = useState("effect");
+  if (!mlData?.feature_discrimination) return (
+    <div className="no-data"><span style={{fontSize:26}}>🔬</span><span>Chargez les deux groupes pour<br/>voir la discrimination des features.</span></div>
+  );
+  const disc = mlData.feature_discrimination;
+  const items = Object.entries(disc).map(([k,v])=>({k,...v}))
+    .sort((a,b)=> sort==="effect" ? Math.abs(b.effect_size_rb)-Math.abs(a.effect_size_rb)
+                 : sort==="pval"  ? a.p_mannwhitney-b.p_mannwhitney
+                 : Math.abs(b.pc1_loading)-Math.abs(a.pc1_loading));
+  const maxRB = Math.max(...items.map(i=>Math.abs(i.effect_size_rb)), 0.01);
+
   return (
-    <div className="impact-metric">
-      <div className="impact-metric-title">
-        {label}
-        {sig!=null && (
-          <span className="sig-badge" style={{background:sig<0.05?"rgba(239,68,68,.1)":sig<0.1?"rgba(245,158,11,.1)":"rgba(0,0,0,.05)",color:sigCol,marginLeft:6}}>
-            p≈{sig}
-          </span>
-        )}
-        {tooltip && <span style={{color:C.muted,fontWeight:400,fontSize:9,marginLeft:4}}>— {tooltip}</span>}
+    <div style={{padding:16, overflowY:"auto", height:"100%"}}>
+      <div style={{fontFamily:"Syne",fontWeight:800,fontSize:14,marginBottom:4}}>Discrimination des features</div>
+      <div style={{color:C.muted,fontSize:11,marginBottom:12,lineHeight:1.6}}>
+        Quelles features distinguent le mieux les comportements normal/exposé ?<br/>
+        Basé sur Mann-Whitney U, rank-biserial correlation, et loadings PCA.
       </div>
-      <div className="dual-bar-row">
-        <span className="dual-bar-label" style={{color:C.temoin}}>Témoin</span>
-        <div className="dual-bar-track"><div className="dual-bar-fill" style={{width:`${tPct}%`,background:C.temoin}}/></div>
-        <span className="dual-bar-val">{fmt(temoinVal)}{unit}</span>
+      <div style={{display:"flex",gap:6,marginBottom:14,alignItems:"center"}}>
+        <span style={{fontSize:10,color:C.muted}}>Trier par :</span>
+        {[["effect","Effect size"],["pval","p-value"],["pc1","PC1 loading"]].map(([v,lbl])=>(
+          <button key={v} className={`btn ${sort===v?"on":""}`} onClick={()=>setSort(v)}>{lbl}</button>
+        ))}
       </div>
-      <div className="dual-bar-row">
-        <span className="dual-bar-label" style={{color:C.expose}}>Exposé</span>
-        <div className="dual-bar-track"><div className="dual-bar-fill" style={{width:`${ePct}%`,background:C.expose}}/></div>
-        <span className="dual-bar-val">{fmt(exposeVal)}{unit}</span>
+
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>Effect size</th>
+            <th>p (Mann-W)</th>
+            <th>PC1</th>
+            <th>Moy T</th>
+            <th>Moy E</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(({k,effect_size_rb,p_mannwhitney,pc1_loading,mean_temoin,mean_expose})=>{
+            const sigCol = p_mannwhitney<.05?C.expose:p_mannwhitney<.1?C.orange:C.muted;
+            const rb = effect_size_rb;
+            const rbW = Math.abs(rb)/maxRB*60;
+            return (
+              <tr key={k}>
+                <td style={{color:C.text,fontFamily:"DM Sans",fontWeight:500,fontSize:10}}>{FEAT_LABELS[k]||k}</td>
+                <td>
+                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <div style={{width:60,height:8,background:C.bg,borderRadius:2,border:`1px solid ${C.border}`,overflow:"hidden",position:"relative"}}>
+                      <div style={{width:`${rbW}px`,height:"100%",background:rb>=0?C.expose:C.temoin,position:"absolute",left:rb>=0?"50%":undefined,right:rb<0?"50%":undefined,borderRadius:1}}/>
+                      <div style={{position:"absolute",left:"50%",top:0,bottom:0,width:1,background:C.border}}/>
+                    </div>
+                    <span style={{fontSize:9,fontFamily:"DM Mono",color:Math.abs(rb)>.3?C.text:C.muted}}>
+                      {rb>=0?"+":""}{rb.toFixed(2)}
+                    </span>
+                  </div>
+                </td>
+                <td><span style={{color:sigCol,fontWeight:p_mannwhitney<.05?700:400,fontSize:10}}>{p_mannwhitney<.001?"<0.001":p_mannwhitney.toFixed(3)}</span></td>
+                <td><span style={{color:Math.abs(pc1_loading)>.2?C.accent:C.muted,fontWeight:Math.abs(pc1_loading)>.2?700:400}}>{pc1_loading>=0?"+":""}{pc1_loading.toFixed(3)}</span></td>
+                <td style={{color:C.temoin}}>{mean_temoin.toFixed(4)}</td>
+                <td style={{color:C.expose}}>{mean_expose.toFixed(4)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div style={{marginTop:16,background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:10,color:C.muted,lineHeight:1.7}}>
+        <strong style={{color:C.text}}>Lecture :</strong> Effect size (rank-biserial) : &gt;0 = feature plus élevée chez les exposés.
+        |rb| &gt; 0.5 = effet large, &gt; 0.3 = moyen, &lt; 0.1 = faible.
+        PC1 loading : contribution de cette feature au premier axe PCA.
       </div>
     </div>
   );
 }
 
-const DeltaBadge = ({ d, invert=false }) => {
-  if (d==null) return null;
-  const isWorse  = invert ? d>5  : d<-5;
-  const isBetter = invert ? d<-5 : d>5;
-  const col = isWorse ? C.expose : isBetter ? C.green : C.muted;
-  return <span style={{fontSize:9,fontWeight:700,color:col,marginLeft:5,padding:"1px 5px",borderRadius:3,
-    background:isWorse?"rgba(239,68,68,.1)":isBetter?"rgba(16,185,129,.1)":"rgba(0,0,0,.04)"}}>
-    {d>0?"+":""}{d.toFixed(1)}%
-  </span>;
-};
+// ─── ONGLET IMPACT ────────────────────────────────────────────────────────────
+function ImpactTab({ bees, mlData }) {
+  const tBees = bees.filter(b=>b.group==="temoin");
+  const eBees = bees.filter(b=>b.group==="expose");
+  const avg=(arr,k)=>{const v=arr.map(b=>b.stats[k]).filter(v=>v!=null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;};
+  const sm=(a,b)=>Math.max(a??0,b??0)*1.2||1;
+  const disc = mlData?.feature_discrimination || {};
+  if(!tBees.length&&!eBees.length) return <div className="no-data"><span>Chargez les deux fichiers.</span></div>;
 
-const SHead = ({children}) => (
-  <div style={{fontFamily:"Syne",fontWeight:700,fontSize:11,color:C.text,margin:"18px 0 10px",paddingBottom:5,borderBottom:`1px solid ${C.border}`}}>
-    {children}
-  </div>
-);
+  const keys = Object.keys(FEAT_LABELS);
+  const mT={}, mE={};
+  keys.forEach(k=>{mT[k]=avg(tBees,k);mE[k]=avg(eBees,k);});
 
-// ─── ONGLET PROFIL IMPACT ─────────────────────────────────────────────────────
-function ImpactTab({ bees, selectedIds, compareData }) {
-  const active   = selectedIds.size>0 ? bees.filter(b=>selectedIds.has(b.id)) : bees;
-  const temoins  = active.filter(b=>b.group==="temoin");
-  const exposes  = active.filter(b=>b.group==="expose");
-
-  const avg = (arr, key) => {
-    const vals = arr.map(b=>b.stats[key]).filter(v=>v!=null);
-    return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
-  };
-  const safeMax = (a,b) => Math.max(a??0,b??0)*1.15||1;
-
-  const mT = { vitesse_moy:avg(temoins,"vitesse_moy"), vitesse_max:avg(temoins,"vitesse_max"),
-    acc_moy:avg(temoins,"acc_moy"), linearite:avg(temoins,"linearite"), tortuosite:avg(temoins,"tortuosite"),
-    aire:avg(temoins,"aire"), stabilite:avg(temoins,"stabilite"), dist_totale:avg(temoins,"dist_totale"),
-    visites:avg(temoins,"visites"), retour_ruche:avg(temoins,"retour_ruche") };
-  const mE = { vitesse_moy:avg(exposes,"vitesse_moy"), vitesse_max:avg(exposes,"vitesse_max"),
-    acc_moy:avg(exposes,"acc_moy"), linearite:avg(exposes,"linearite"), tortuosite:avg(exposes,"tortuosite"),
-    aire:avg(exposes,"aire"), stabilite:avg(exposes,"stabilite"), dist_totale:avg(exposes,"dist_totale"),
-    visites:avg(exposes,"visites"), retour_ruche:avg(exposes,"retour_ruche") };
-
-  const delta = (tVal, eVal) => (tVal && eVal!=null && tVal>0) ? ((eVal-tVal)/tVal*100) : null;
-  const sig   = (key) => compareData?.significance?.[key];
-  const hasBees = temoins.length>0 || exposes.length>0;
-
-  if (!hasBees) return (
-    <div className="no-data"><span style={{fontSize:32}}>📉</span><span>Chargez les deux fichiers JSON pour voir les métriques.</span></div>
-  );
+  // Trier par effect size
+  const sortedKeys = [...keys].sort((a,b)=>
+    Math.abs(disc[b]?.effect_size_rb||0)-Math.abs(disc[a]?.effect_size_rb||0));
 
   return (
-    <div style={{padding:20,maxWidth:700,margin:"0 auto"}}>
-      <div style={{fontFamily:"Syne",fontWeight:800,fontSize:16,marginBottom:4}}>Profil Impact</div>
-      <div style={{color:C.muted,fontSize:11,marginBottom:20,lineHeight:1.7}}>
-        Métriques calculées côté serveur · p-values : test Mann-Whitney approx.
-      </div>
-
-      <SHead>Cinématique de vol</SHead>
-      <DualBar label={<>Vitesse moyenne<DeltaBadge d={delta(mT.vitesse_moy,mE.vitesse_moy)}/></>}
-        tooltip="Activité de vol" sig={sig("vitesse_moy")}
-        temoinVal={mT.vitesse_moy} exposeVal={mE.vitesse_moy}
-        maxVal={safeMax(mT.vitesse_moy,mE.vitesse_moy)} unit=" m/s"/>
-      <DualBar label={<>Stabilité vitesse<DeltaBadge d={delta(mT.stabilite,mE.stabilite)}/></>}
-        tooltip="1 = vitesse très stable" sig={sig("stabilite_vitesse")}
-        temoinVal={mT.stabilite} exposeVal={mE.stabilite} maxVal={1}/>
-      <DualBar label={<>Accélération moyenne<DeltaBadge d={delta(mT.acc_moy,mE.acc_moy)} invert/></>}
-        tooltip="Erraticité instantanée" sig={sig("acceleration_moy")}
-        temoinVal={mT.acc_moy} exposeVal={mE.acc_moy}
-        maxVal={safeMax(mT.acc_moy,mE.acc_moy)} unit=" m/s²" decimals={4}/>
-
-      <SHead>Structure de trajectoire</SHead>
-      <DualBar label={<>Linéarité PCA<DeltaBadge d={delta(mT.linearite,mE.linearite)}/></>}
-        tooltip="Proche de 1 = vol rectiligne" sig={sig("linearite_pca")}
-        temoinVal={mT.linearite} exposeVal={mE.linearite} maxVal={1}/>
-      <DualBar label={<>Tortuosité<DeltaBadge d={delta(mT.tortuosite,mE.tortuosite)}/></>}
-        tooltip="dist. directe / dist. totale · proche 1 = ligne droite" sig={sig("tortuosite")}
-        temoinVal={mT.tortuosite} exposeVal={mE.tortuosite} maxVal={1}/>
-      <DualBar label={<>Distance totale<DeltaBadge d={delta(mT.dist_totale,mE.dist_totale)} invert/></>}
-        sig={sig("dist_totale")}
-        temoinVal={mT.dist_totale} exposeVal={mE.dist_totale}
-        maxVal={safeMax(mT.dist_totale,mE.dist_totale)} unit=" m" decimals={1}/>
-      <DualBar label={<>Aire exploration<DeltaBadge d={delta(mT.aire,mE.aire)} invert/></>}
-        tooltip="Enveloppe convexe XY" sig={sig("aire_exploration")}
-        temoinVal={mT.aire} exposeVal={mE.aire}
-        maxVal={safeMax(mT.aire,mE.aire)} unit=" m²"/>
-
-      <SHead>Comportement de butinage</SHead>
-      <DualBar label={<>Visites plantes<DeltaBadge d={delta(mT.visites,mE.visites)}/></>}
-        sig={sig("total_visites_plantes")}
-        temoinVal={mT.visites} exposeVal={mE.visites}
-        maxVal={safeMax(mT.visites,mE.visites)} decimals={1}/>
-      <DualBar label={<>Retour ruche<DeltaBadge d={delta(mT.retour_ruche,mE.retour_ruche)}/></>}
-        tooltip="Score 0→1 basé sur distance finale à la ruche" sig={sig("retour_ruche_score")}
-        temoinVal={mT.retour_ruche} exposeVal={mE.retour_ruche} maxVal={1}/>
+    <div style={{padding:16,overflowY:"auto",height:"100%"}}>
+      <div style={{fontFamily:"Syne",fontWeight:800,fontSize:14,marginBottom:4}}>Profil comparatif</div>
+      <div style={{color:C.muted,fontSize:11,marginBottom:16,lineHeight:1.6}}>Triées par effect size (plus discriminantes en premier)</div>
+      {sortedKeys.map(k=>{
+        const tV=mT[k], eV=mE[k], mx=sm(tV,eV);
+        const fd=disc[k];
+        const p=fd?.p_mannwhitney, rb=fd?.effect_size_rb;
+        const sigCol=p!=null?(p<.05?C.expose:p<.1?C.orange:C.muted):C.muted;
+        return (
+          <div key={k} style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px",marginBottom:6}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <span style={{fontSize:11,fontWeight:500,color:C.text}}>{FEAT_LABELS[k]}</span>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                {rb!=null&&<span style={{fontSize:9,fontFamily:"DM Mono",color:C.muted}}>rb={rb>=0?"+":""}{rb.toFixed(2)}</span>}
+                {p!=null&&<span style={{fontSize:8,padding:"1px 5px",borderRadius:3,fontWeight:700,
+                  background:p<.05?"rgba(239,68,68,.1)":p<.1?"rgba(245,158,11,.1)":"rgba(0,0,0,.04)",color:sigCol}}>
+                  {p<.001?"p<0.001":"p="+p.toFixed(3)}
+                </span>}
+              </div>
+            </div>
+            {[["Témoin",tV,C.temoin],[" Exposé",eV,C.expose]].map(([lbl,v,col])=>(
+              <div key={lbl} style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                <span style={{width:52,fontSize:9,color:col,fontWeight:700,textAlign:"right",fontFamily:"DM Mono"}}>{lbl}</span>
+                <div style={{flex:1,height:8,background:C.panel,borderRadius:3,border:`1px solid ${C.border}`,overflow:"hidden"}}>
+                  <div style={{width:`${mx>0?(v??0)/mx*100:0}%`,height:"100%",background:col,opacity:.8,borderRadius:3}}/>
+                </div>
+                <span style={{width:52,fontSize:9,color:C.muted,fontFamily:"DM Mono"}}>{v!=null?v.toFixed(4):"—"}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -391,421 +423,320 @@ function ImpactTab({ bees, selectedIds, compareData }) {
 // ─── COMPOSANT PRINCIPAL ──────────────────────────────────────────────────────
 export default function BourdonTracker() {
   const [bees,       setBees]       = useState([]);
-  const [flowersT,   setFlowersT]   = useState([]);  // fleurs du fichier témoin
-  const [flowersE,   setFlowersE]   = useState([]);  // fleurs du fichier exposé
+  const [flowersT,   setFlowersT]   = useState([]);
+  const [flowersE,   setFlowersE]   = useState([]);
   const [rucheT,     setRucheT]     = useState(null);
   const [rucheE,     setRucheE]     = useState(null);
   const [worldSize,  setWorldSize]  = useState([2.5,2.5,1.8]);
-  const [selectedIds,setSelectedIds]= useState(new Set());
+  const [selIds,     setSelIds]     = useState(new Set());
   const [hoverBee,   setHoverBee]   = useState(null);
   const [tab,        setTab]        = useState("map");
-  const [compareData,setCompareData]= useState(null);
+  const [mlData,     setMlData]     = useState(null);
+  const [colorMode,  setColorMode]  = useState("group"); // "group" | "normal"
+  const [pcaColor,   setPcaColor]   = useState("group");
 
-  const canvasRef   = useRef(null);
-  const heatmapRef  = useRef(null);
-
-  const [panX,setPanX]=useState(0), [panY,setPanY]=useState(0);
+  const [panX,setPanX]=useState(0),[panY,setPanY]=useState(0);
   const [zoom,setZoom]=useState(1);
-  const [rotX,setRotX]=useState(0), [rotY,setRotY]=useState(0);
-  const [isDragging,setIsDragging]=useState(false);
-  const [dragState,setDragState]=useState(null);
+  const [rotX,setRotX]=useState(0),[rotY,setRotY]=useState(0);
+  const [isDrag,setIsDrag]=useState(false),[dSt,setDSt]=useState(null);
+  const [rawT,setRawT]=useState(null),[rawE,setRawE]=useState(null);
+  const [processed,setProcessed]=useState(false),[loading,setLoading]=useState(false);
 
-  const [jsonTText,setJsonTText]=useState("");
-  const [jsonEText,setJsonEText]=useState("");
-  const [rawT,setRawT]=useState(null);
-  const [rawE,setRawE]=useState(null);
-  const [processed,setProcessed]=useState(false);
-  const [loading,setLoading]=useState(false);
+  const cvRef   = useRef(null);
+  const heatRef = useRef(null);
 
-  // Toutes les fleurs annotées avec leur groupe
-  const allFlowers = useMemo(() => [
-    ...flowersT.map(f=>[...f,"temoin"]),
-    ...flowersE.map(f=>[...f,"expose"]),
-  ], [flowersT, flowersE]);
+  const allFlowers = useMemo(()=>[...flowersT,...flowersE],[flowersT,flowersE]);
 
-  // ── Upload vers backend ──────────────────────────────────────────────────
   const uploadJson = useCallback(async (json, group) => {
     try {
       const fd = new FormData();
       fd.append("file", new Blob([JSON.stringify(json)],{type:"application/json"}), "data.json");
       fd.append("group", group);
-      const res = await fetch("http://localhost:5000/upload", { method:"POST", body:fd });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
-    } catch (err) {
-      console.warn("Backend indisponible, données brutes utilisées:", err);
-      return json;
-    }
-  }, []);
+      const r = await fetch("http://localhost:5000/upload",{method:"POST",body:fd});
+      if (!r.ok) throw new Error();
+      return await r.json();
+    } catch { return json; }
+  },[]);
 
-  useEffect(() => {
-    if (!rawT || !rawE || processed) return;
+  useEffect(()=>{
+    if(!rawT||!rawE||processed) return;
     setLoading(true);
-    (async () => {
-      setBees([]); setSelectedIds(new Set());
-      const [enrichedT, enrichedE] = await Promise.all([
-        uploadJson(rawT, "temoin"),
-        uploadJson(rawE, "expose"),
-      ]);
-      const dataT = parseJSON(enrichedT);
-      const dataE = parseJSON(enrichedE);
-
-      const tBees = dataT.bees.map(b=>({...b,group:"temoin"}));
-      const eBees = dataE.bees.map(b=>({...b,group:"expose"}));
-
-      setBees([...tBees,...eBees]);
-      setFlowersT(dataT.flowers);
-      setFlowersE(dataE.flowers);
-      setRucheT(dataT.ruche);
-      setRucheE(dataE.ruche);
-      setWorldSize(dataT.worldSize);
-      setJsonTText(JSON.stringify(enrichedT,null,2));
-      setJsonEText(JSON.stringify(enrichedE,null,2));
-      setProcessed(true);
-      setLoading(false);
+    (async()=>{
+      setBees([]); setSelIds(new Set()); setMlData(null);
+      try { await fetch("http://localhost:5000/reset",{method:"POST"}); } catch{}
+      const [eT,eE] = await Promise.all([uploadJson(rawT,"temoin"),uploadJson(rawE,"expose")]);
+      const ml = eT._ml || eE._ml || null;
+      if(ml) setMlData(ml);
+      const dT=parseJSON(eT,"temoin"), dE=parseJSON(eE,"expose");
+      setBees([...dT.bees,...dE.bees]);
+      setFlowersT(dT.flowers); setFlowersE(dE.flowers);
+      setRucheT(dT.ruche); setRucheE(dE.ruche);
+      setWorldSize(dT.worldSize);
+      setProcessed(true); setLoading(false);
     })();
-  }, [rawT, rawE, processed, uploadJson]);
+  },[rawT,rawE,processed,uploadJson]);
 
-  // ── Rendu canvas ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (canvasRef.current)
-      render3D(canvasRef.current, bees, allFlowers, rucheT, rucheE, worldSize, selectedIds, hoverBee, panX, panY, zoom, rotX, rotY);
-    if (heatmapRef.current)
-      renderHeatmap(heatmapRef.current, bees, allFlowers, rucheT, rucheE, worldSize, selectedIds);
-  }, [bees, allFlowers, rucheT, rucheE, worldSize, selectedIds, hoverBee, panX, panY, zoom, rotX, rotY]);
+  useEffect(()=>{
+    if(cvRef.current) render3D(cvRef.current,bees,allFlowers,rucheT,rucheE,worldSize,selIds,hoverBee,panX,panY,zoom,rotX,rotY,colorMode,mlData);
+  },[bees,allFlowers,rucheT,rucheE,worldSize,selIds,hoverBee,panX,panY,zoom,rotX,rotY,colorMode,mlData]);
 
-  // ── Sélection ────────────────────────────────────────────────────────────
-  const handleBeeClick = useCallback((bee,e) => {
-    setSelectedIds(prev => {
-      const n = new Set(prev);
-      if (e.ctrlKey||e.metaKey) { if(n.has(bee.id))n.delete(bee.id); else n.add(bee.id); }
-      else { if(n.size===1&&n.has(bee.id)) n.clear(); else{n.clear();n.add(bee.id);} }
+  useEffect(()=>{
+    if(!heatRef.current) return;
+    const canvas=heatRef.current;
+    const ctx=canvas.getContext("2d");
+    const W=canvas.width=canvas.offsetWidth, H=canvas.height=canvas.offsetHeight;
+    ctx.fillStyle="#1a1a2e"; ctx.fillRect(0,0,W,H);
+    const active=selIds.size>0?bees.filter(b=>selIds.has(b.id)):bees;
+    if(!active.length) return;
+    const density=new Float32Array(W*H), sigma=Math.max(W,H)*.016;
+    active.forEach(bee=>bee.points.forEach(p=>{
+      const px=(p.x/worldSize[0])*W, py=(p.y/worldSize[1])*H;
+      const r=sigma*2.5;
+      const x0=Math.max(0,Math.floor(px-r)),x1=Math.min(W,Math.ceil(px+r));
+      const y0=Math.max(0,Math.floor(py-r)),y1=Math.min(H,Math.ceil(py+r));
+      for(let y=y0;y<y1;y++) for(let x=x0;x<x1;x++){
+        density[y*W+x]+=Math.exp(-((x-px)**2+(y-py)**2)/(2*sigma*sigma));
+      }
+    }));
+    const maxD=Math.max(...density)||1;
+    const img=ctx.createImageData(W,H);
+    for(let i=0;i<W*H;i++){
+      const n=Math.sqrt(density[i]/maxD);
+      let r,g,b;
+      if(n<.25){const t=n/.25;r=0;g=Math.floor(80+t*120);b=255;}
+      else if(n<.5){const t=(n-.25)/.25;r=0;g=255;b=Math.floor(255*(1-t));}
+      else if(n<.75){const t=(n-.5)/.25;r=Math.floor(t*255);g=255;b=0;}
+      else{const t=(n-.75)/.25;r=255;g=Math.floor(255*(1-t*.6));b=0;}
+      img.data[i*4]=r;img.data[i*4+1]=g;img.data[i*4+2]=b;img.data[i*4+3]=200;
+    }
+    ctx.putImageData(img,0,0);
+  },[bees,allFlowers,worldSize,selIds]);
+
+  const selectBee = useCallback((id, e) => {
+    setSelIds(prev=>{
+      const n=new Set(prev);
+      if(e?.ctrlKey||e?.metaKey){if(n.has(id))n.delete(id);else n.add(id);}
+      else{if(n.size===1&&n.has(id))n.clear();else{n.clear();n.add(id);}}
       return n;
     });
   },[]);
 
-  const processJson = useCallback((json, isTemoin) => {
-    const text = JSON.stringify(json,null,2);
-    if (isTemoin) { setJsonTText(text); setRawT(json); }
-    else          { setJsonEText(text); setRawE(json); }
-    setProcessed(false);
-  },[]);
-
-  const handleFile = (file, isTemoin) => {
-    const r = new FileReader();
-    r.onload = e => { try { processJson(JSON.parse(e.target.result),isTemoin); } catch(err){ alert("Erreur: "+err.message); } };
+  const handleFile = (file, isT) => {
+    const r=new FileReader();
+    r.onload=e=>{try{const j=JSON.parse(e.target.result);if(isT)setRawT(j);else setRawE(j);setProcessed(false);}catch(err){alert(err.message);}};
     r.readAsText(file);
   };
 
-  // ── Interactions canvas ───────────────────────────────────────────────────
-  const handleMouseDown = e => {
-    setIsDragging(true);
-    setDragState({ x:e.clientX, y:e.clientY, panX, panY, rotX, rotY, mode:e.shiftKey?"pan":"rotate" });
-  };
-  const handleMouseMove = e => {
-    if (!isDragging||!dragState) return;
-    if (dragState.mode==="pan") {
-      setPanX(dragState.panX + e.clientX - dragState.x);
-      setPanY(dragState.panY + e.clientY - dragState.y);
-    } else {
-      setRotY(dragState.rotY + (e.clientX-dragState.x)*0.006);
-      setRotX(Math.max(-Math.PI/2+.1,Math.min(Math.PI/2-.1, dragState.rotX-(e.clientY-dragState.y)*0.006)));
-    }
-  };
-  const handleMouseUp = () => setIsDragging(false);
-  const handleWheel   = e => { e.preventDefault(); setZoom(p=>Math.min(3,Math.max(.4,p*(e.deltaY>0?.9:1.1)))); };
+  const handleMouseDown=e=>{setIsDrag(true);setDSt({x:e.clientX,y:e.clientY,panX,panY,rotX,rotY,mode:e.shiftKey?"pan":"rotate"});};
+  const handleMouseMove=e=>{if(!isDrag||!dSt)return;if(dSt.mode==="pan"){setPanX(dSt.panX+e.clientX-dSt.x);setPanY(dSt.panY+e.clientY-dSt.y);}else{setRotY(dSt.rotY+(e.clientX-dSt.x)*.006);setRotX(Math.max(-Math.PI/2+.1,Math.min(Math.PI/2-.1,dSt.rotX-(e.clientY-dSt.y)*.006)));}};
+  const handleWheel=e=>{e.preventDefault();setZoom(p=>Math.min(3,Math.max(.4,p*(e.deltaY>0?.9:1.1))));};
 
-  // ── Données résumé ────────────────────────────────────────────────────────
-  const temoinBees = bees.filter(b=>b.group==="temoin");
-  const exposeBees = bees.filter(b=>b.group==="expose");
-  const isNormal   = b => b.ml_prediction===0 || b.ml_prediction===null ? false : b.ml_prediction===1;
-  const tNorm = temoinBees.filter(isNormal).length;
-  const eNorm = exposeBees.filter(isNormal).length;
+  const tBees=bees.filter(b=>b.group==="temoin");
+  const eBees=bees.filter(b=>b.group==="expose");
+  const normalBees =bees.filter(b=>mlData?.svm?.per_bee?.[b.id]?.is_normal===true);
+  const abnormBees =bees.filter(b=>mlData?.svm?.per_bee?.[b.id]?.is_normal===false);
+  const selBee=useMemo(()=>{const id=[...selIds][0];return bees.find(b=>b.id===id)||null;},[bees,selIds]);
 
-  const selectedBee = useMemo(() => {
-    const id = [...selectedIds][0];
-    return bees.find(b=>b.id===id)||null;
-  },[bees,selectedIds]);
+  const TABS=[["map","3D"],["pca","PCA + SVM"],["feat","Features"],["impact","Impact"],["bee","Individu"]];
+
+  const selGroups = [
+    ["Tous", ()=>new Set(bees.map(b=>b.id)), C.muted],
+    [`T (${tBees.length})`, ()=>new Set(tBees.map(b=>b.id)), C.temoin],
+    [`E (${eBees.length})`, ()=>new Set(eBees.map(b=>b.id)), C.expose],
+    ...(mlData ? [
+      [`Normal (${normalBees.length})`, ()=>new Set(normalBees.map(b=>b.id)), C.normal],
+      [`Anormal (${abnormBees.length})`, ()=>new Set(abnormBees.map(b=>b.id)), C.abnorm],
+    ] : []),
+  ];
 
   return (
     <>
-      <style>{styles}</style>
+      <style>{css}</style>
       <div className="app">
-        <div className="header">
-          <h1>BumbleBee</h1>
-          {loading && <span style={{marginLeft:"auto",fontSize:11,color:C.accent,fontWeight:600,
-            fontFamily:"DM Mono",animation:"pulse 1s infinite"}}>⟳ Calcul en cours…</span>}
+        <div className="hdr">
+          <h1>BumbleBee ML</h1>
+          <span style={{fontSize:9,color:C.muted,fontFamily:"DM Mono"}}>
+            T:{tBees.length} · E:{eBees.length}
+            {mlData?.svm && ` · LOO ${(mlData.svm.accuracy_loo*100).toFixed(0)}% · AUC ${(mlData.svm.auc_loo*100).toFixed(0)}%`}
+            {mlData && ` · Normal:${mlData.n_normal} Anormal:${mlData.n_abnormal}`}
+          </span>
+          {loading&&<span style={{marginLeft:"auto",fontSize:10,color:C.accent,fontWeight:700,fontFamily:"DM Mono"}}>⟳ Calcul ML…</span>}
         </div>
+
         <div className="main">
-
-          {/* ── SIDEBAR ─────────────────────────────────────────────────── */}
-          <div className="sidebar">
-            <div className="section">
-              <div className="section-title">Données</div>
-
-              {/* Témoin */}
-              <div className="json-input-group">
-                <div className="json-input-label">
-                  <span style={{width:8,height:8,borderRadius:"50%",background:C.temoin,display:"inline-block"}}/>
-                  Groupe Témoin (JSON)
-                </div>
-                <input type="file" accept=".json"
-                  onChange={e=>e.target.files?.[0]&&handleFile(e.target.files[0],true)}
-                  style={{cursor:"pointer",fontSize:11,width:"100%"}}/>
-              </div>
-
-              {/* Exposé */}
-              <div className="json-input-group">
-                <div className="json-input-label">
-                  <span style={{width:8,height:8,borderRadius:"50%",background:C.expose,display:"inline-block"}}/>
-                  Groupe Exposé (JSON)
-                </div>
-                <input type="file" accept=".json"
-                  onChange={e=>e.target.files?.[0]&&handleFile(e.target.files[0],false)}
-                  style={{cursor:"pointer",fontSize:11,width:"100%"}}/>
-              </div>
-            </div>
-
-            {/* Liste bourdons */}
-            <div className="section" style={{flex:1,overflowY:"auto"}}>
-              <div className="section-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span>Individus ({bees.length})</span>
-                <div style={{display:"flex",gap:4}}>
-                  {[["Tous",()=>bees.map(b=>b.id)],[`T(${temoinBees.length})`,()=>temoinBees.map(b=>b.id)],[`E(${exposeBees.length})`,()=>exposeBees.map(b=>b.id)]].map(([lbl,fn],i)=>(
-                    <span key={i} onClick={()=>setSelectedIds(new Set(fn()))}
-                      style={{cursor:"pointer",fontSize:9,color:i===1?C.temoin:i===2?C.expose:C.text,
-                        background:C.bg,padding:"2px 5px",borderRadius:4,border:`1px solid ${C.border}`}}>
-                      {lbl}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              {bees.length>0 && <div style={{fontSize:9,color:C.muted,marginBottom:6,fontStyle:"italic"}}>Clic = sélection · Ctrl+Clic = multi</div>}
-              <div className="bee-list">
-                {bees.map(bee=>(
-                  <div key={bee.id} className={`bee-item ${selectedIds.has(bee.id)?"selected":""}`}
-                    onClick={e=>handleBeeClick(bee,e)}
-                    onMouseEnter={()=>setHoverBee(bee.id)} onMouseLeave={()=>setHoverBee(null)}>
-                    <div style={{width:7,height:7,borderRadius:"50%",flexShrink:0,
-                      background:bee.group==="temoin"?C.temoin:C.expose}}/>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,fontWeight:600}}>{bee.id}</div>
-                    </div>
-                    {bee.ml_confidence!=null && (
-                      <span style={{fontSize:9,padding:"1px 5px",borderRadius:3,fontWeight:700,
-                        background:bee.ml_prediction===0?"rgba(16,185,129,.12)":"rgba(239,68,68,.10)",
-                        color:bee.ml_prediction===0?C.green:C.expose}}>
-                        {(bee.ml_confidence*100).toFixed(0)}%
-                      </span>
-                    )}
+          <div className="side">
+            <div className="sec">
+              <div className="sec-title">Données</div>
+              {[["Témoin",true,C.temoin],["Exposé",false,C.expose]].map(([lbl,isT,col])=>(
+                <div key={lbl} style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:7,padding:9,marginBottom:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:5}}>
+                    <span style={{width:7,height:7,borderRadius:"50%",background:col,display:"inline-block"}}/>
+                    <span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:.8}}>{lbl}</span>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* ── CENTRE ──────────────────────────────────────────────────── */}
-          <div className="center">
-            <div className="tabs">
-              {[["map","Visualisation"],["analysis","Analyse"],["impact","Impact"]].map(([k,lbl])=>(
-                <div key={k} className={`tab ${tab===k?"active":""}`} onClick={()=>setTab(k)}>{lbl}</div>
+                  <input type="file" accept=".json" onChange={e=>e.target.files?.[0]&&handleFile(e.target.files[0],isT)}
+                    style={{fontSize:10,width:"100%",cursor:"pointer"}}/>
+                </div>
               ))}
             </div>
 
-            {/* Visualisation 3D + heatmap */}
-            {tab==="map" && (
+            <div className="sec">
+              <div className="sec-title">Sélection</div>
+              <div className="btn-grp">
+                {selGroups.map(([lbl,fn,col])=>(
+                  <button key={lbl} className="btn" onClick={()=>setSelIds(fn())}
+                    style={{borderColor:col,color:col}}>{lbl}</button>
+                ))}
+                {selIds.size>0&&<button className="btn" onClick={()=>setSelIds(new Set())} style={{color:C.muted}}>Désélectionner</button>}
+              </div>
+              {selIds.size>0&&<div style={{fontSize:9,color:C.muted,marginTop:6,fontFamily:"DM Mono"}}>{selIds.size} sélectionné(s)</div>}
+            </div>
+
+            <div className="sec">
+              <div className="sec-title">Couleur trajectoires</div>
+              <div className="btn-grp">
+                <button className={`btn ${colorMode==="group"?"on":""}`} onClick={()=>setColorMode("group")}>Groupe</button>
+                <button className={`btn ${colorMode==="normal"?"on":""}`} onClick={()=>setColorMode("normal")} disabled={!mlData}>Normal/Anormal</button>
+              </div>
+            </div>
+
+            <div className="sec" style={{flex:1,overflowY:"auto"}}>
+              <div className="sec-title">Individus ({bees.length})</div>
+              {bees.map(bee=>{
+                const pb=mlData?.svm?.per_bee?.[bee.id];
+                return (
+                  <div key={bee.id} className={`bee-item ${selIds.has(bee.id)?"sel":""}`}
+                    onClick={e=>selectBee(bee.id,e)}
+                    onMouseEnter={()=>setHoverBee(bee.id)} onMouseLeave={()=>setHoverBee(null)}>
+                    <span style={{width:7,height:7,borderRadius:"50%",flexShrink:0,
+                      background:colorMode==="normal"&&pb ? (pb.is_normal?C.normal:C.abnorm)
+                                :(bee.group==="temoin"?C.temoin:C.expose)}}/>
+                    <span style={{flex:1,fontSize:11,fontWeight:600}}>{bee.id}</span>
+                    {pb&&<span className="chip" style={{
+                      background:pb.is_normal?"rgba(16,185,129,.1)":"rgba(249,115,22,.1)",
+                      color:pb.is_normal?C.normal:C.abnorm}}>
+                      {pb.is_normal?"normal":"anormal"}
+                    </span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="center">
+            <div className="tabs">
+              {TABS.map(([k,lbl])=>(
+                <div key={k} className={`tab ${tab===k?"on":""}`} onClick={()=>setTab(k)}>{lbl}</div>
+              ))}
+            </div>
+
+            {tab==="map"&&(
               <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
-                <div className="canvas-wrap" style={{flex:2,minHeight:0}}>
-                  <canvas ref={canvasRef} style={{width:"100%",height:"100%",cursor:isDragging?"grabbing":"grab"}}
+                <div className="cvs-wrap" style={{flex:2}}>
+                  <canvas ref={cvRef} style={{cursor:isDrag?"grabbing":"grab"}}
                     onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={handleWheel}
+                    onMouseUp={()=>setIsDrag(false)} onMouseLeave={()=>setIsDrag(false)}
+                    onWheel={handleWheel}
                     onDoubleClick={()=>{setPanX(0);setPanY(0);setZoom(1);setRotX(0);setRotY(0);}}/>
-                  <div style={{position:"absolute",bottom:10,left:10,background:"rgba(0,0,0,.65)",
-                    color:"#fff",padding:"5px 10px",borderRadius:5,fontSize:10,fontFamily:"DM Mono",pointerEvents:"none"}}>
-                    Glisser = rotation · Shift+Glisser = déplacement · Scroll = zoom · Double-clic = reset
-                    {" · "}<span style={{color:C.temoin}}>━</span> Témoin
-                    {" · "}<span style={{color:C.expose}}>╌</span> Exposé
-                    {" · "}<span style={{color:"#fbbf24"}}>●</span> Plantes T
-                    {" · "}<span style={{color:"#f97316"}}>●</span> Plantes E
+                  <div style={{position:"absolute",bottom:8,left:8,background:"rgba(0,0,0,.55)",color:"#fff",
+                    padding:"4px 8px",borderRadius:4,fontSize:9,fontFamily:"DM Mono",pointerEvents:"none"}}>
+                    Glisser=rotation · Shift+Glisser=déplacement · Scroll=zoom · Dbl-clic=reset
                   </div>
                 </div>
-                <div style={{flex:1,minHeight:0,borderTop:`1px solid ${C.border}`,position:"relative"}}>
-                  <canvas ref={heatmapRef} style={{width:"100%",height:"100%"}}/>
+                <div className="cvs-wrap" style={{flex:1,borderTop:`1px solid ${C.border}`}}>
+                  <canvas ref={heatRef}/>
                 </div>
               </div>
             )}
 
-            {/* Analyse individuelle */}
-            {tab==="analysis" && (
+            {tab==="pca"&&(
+              <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
+                <div style={{padding:"7px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+                  <span style={{fontSize:10,color:C.muted}}>Couleur :</span>
+                  <div className="btn-grp">
+                    <button className={`btn ${pcaColor==="group"?"on":""}`} onClick={()=>setPcaColor("group")}>Témoin / Exposé</button>
+                    <button className={`btn ${pcaColor==="normal"?"on":""}`} onClick={()=>setPcaColor("normal")}>Normal / Anormal</button>
+                  </div>
+                  <div style={{marginLeft:"auto",display:"flex",gap:12,fontSize:9,color:C.muted}}>
+                    <span>● Témoin</span>
+                    <span>▲ Exposé</span>
+                    <span style={{color:"#555"}}>--- Frontière SVM</span>
+                  </div>
+                </div>
+                <div className="cvs-wrap" style={{flex:1}}>
+                  <PcaSvmCanvas mlData={mlData} colorMode={pcaColor} selIds={selIds} onClickBee={selectBee}/>
+                </div>
+                {mlData?.svm&&(
+                  <div style={{padding:"6px 14px",borderTop:`1px solid ${C.border}`,display:"flex",gap:16,fontSize:10,color:C.muted,flexShrink:0}}>
+                    <span>Accuracy LOO : <strong style={{color:mlData.svm.accuracy_loo>.7?C.green:C.orange}}>{(mlData.svm.accuracy_loo*100).toFixed(1)}%</strong></span>
+                    <span>AUC LOO : <strong style={{color:mlData.svm.auc_loo>.7?C.green:C.orange}}>{(mlData.svm.auc_loo*100).toFixed(1)}%</strong></span>
+                    <span style={{color:C.normal}}>● Normal : {mlData.n_normal}</span>
+                    <span style={{color:C.abnorm}}>● Anormal : {mlData.n_abnormal}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {tab==="feat"&&<div style={{flex:1,overflowY:"auto"}}><FeatDiscTab mlData={mlData}/></div>}
+
+            {tab==="impact"&&<div style={{flex:1,overflowY:"auto"}}><ImpactTab bees={bees} mlData={mlData}/></div>}
+
+            {tab==="bee"&&(
               <div style={{flex:1,overflowY:"auto",padding:16}}>
-                {selectedBee ? (
-                  <div style={{display:"flex",flexDirection:"column",gap:14,maxWidth:520}}>
-                    <div style={{fontFamily:"Syne",fontWeight:800,fontSize:14}}>
-                      {selectedBee.id}
-                      <span style={{marginLeft:8,fontSize:11,fontWeight:600,
-                        color:selectedBee.group==="temoin"?C.temoin:C.expose}}>
-                        {selectedBee.group.toUpperCase()}
-                      </span>
-                    </div>
-
-                    {/* Cinématique */}
-                    <div>
-                      <div style={{fontFamily:"Syne",fontWeight:700,fontSize:11,color:C.muted,
-                        textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Cinématique</div>
-                      {[
-                        ["Vitesse moy.",     selectedBee.stats.vitesse_moy?.toFixed(4)+" m/s"],
-                        ["Vitesse max",      selectedBee.stats.vitesse_max?.toFixed(4)+" m/s"],
-                        ["Accel. moy.",      selectedBee.stats.acc_moy?.toFixed(4)+" m/s²"],
-                        ["Stabilité vitesse",selectedBee.stats.stabilite?.toFixed(3)],
-                        ["Accél. RMS",       selectedBee.metriques?.acceleration_rms?.toFixed(4)+" m/s²"],
-                        ["Angle moy. dir.",  selectedBee.metriques?.angle_moy?.toFixed(4)+" rad"],
-                        ["Virages brusques", selectedBee.metriques?.nb_virages_brusques],
-                      ].map(([l,v])=>(
-                        <div key={l} className="stat-row">
-                          <span className="stat-label">{l}</span>
-                          <span className="stat-val">{v}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Trajectoire */}
-                    <div>
-                      <div style={{fontFamily:"Syne",fontWeight:700,fontSize:11,color:C.muted,
-                        textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Trajectoire</div>
-                      {[
-                        ["Linéarité PCA",  selectedBee.stats.linearite?.toFixed(4)],
-                        ["Tortuosité",     selectedBee.stats.tortuosite?.toFixed(4)],
-                        ["Distance totale",selectedBee.stats.dist_totale?.toFixed(2)+" m"],
-                        ["Aire exploration",selectedBee.stats.aire?.toFixed(4)+" m²"],
-                        ["Altitude moy.",  selectedBee.metriques?.altitude_moy?.toFixed(3)+" m"],
-                        ["Altitude std.",  selectedBee.metriques?.altitude_std?.toFixed(3)+" m"],
-                      ].map(([l,v])=>(
-                        <div key={l} className="stat-row">
-                          <span className="stat-label">{l}</span>
-                          <span className="stat-val">{v}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Butinage */}
-                    <div>
-                      <div style={{fontFamily:"Syne",fontWeight:700,fontSize:11,color:C.muted,
-                        textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Butinage</div>
-                      {[
-                        ["Visites plantes",  selectedBee.stats.visites],
-                        ["Visites ruche",    selectedBee.metriques?.nb_visites_ruche],
-                        ["Ratio butinage",   selectedBee.metriques?.ratio_butinage?.toFixed(4)],
-                        ["Ratio t° plantes", selectedBee.metriques?.ratio_temps_plantes?.toFixed(4)],
-                        ["Retour ruche (score)", selectedBee.stats.retour_ruche?.toFixed(3)],
-                        ["Dist. ruche fin",  selectedBee.metriques?.dist_ruche_fin?.toFixed(3)+" m"],
-                        ["Δt visite→ruche",  selectedBee.metriques?.delta_t_visite_retour?.toFixed(0)+" s"],
-                      ].map(([l,v])=>(
-                        <div key={l} className="stat-row">
-                          <span className="stat-label">{l}</span>
-                          <span className="stat-val">{v}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Visites par plante */}
-                    {selectedBee.metriques?.visites_par_plante?.length>0 && (
-                      <div>
-                        <div style={{fontFamily:"Syne",fontWeight:700,fontSize:11,color:C.muted,
-                          textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Visites par plante</div>
-                        {selectedBee.metriques.visites_par_plante.map(v=>(
-                          <div key={v.plante_id} className="stat-row">
-                            <span className="stat-label">Plante {v.plante_id+1}</span>
-                            <span className="stat-val">{v.nb_visites}</span>
-                          </div>
-                        ))}
+                {selBee?(()=>{
+                  const pb=mlData?.svm?.per_bee?.[selBee.id];
+                  return (
+                    <div style={{maxWidth:480}}>
+                      <div style={{fontFamily:"Syne",fontWeight:800,fontSize:14,marginBottom:4}}>
+                        {selBee.id}
+                        <span style={{marginLeft:8,fontSize:11,color:selBee.group==="temoin"?C.temoin:C.expose}}>{selBee.group.toUpperCase()}</span>
+                        {pb&&<span className="chip" style={{marginLeft:8,background:pb.is_normal?"rgba(16,185,129,.12)":"rgba(249,115,22,.12)",color:pb.is_normal?C.normal:C.abnorm}}>{pb.is_normal?"NORMAL":"ANORMAL"}</span>}
                       </div>
-                    )}
-
-
-                  </div>
-                ) : (
-                  <div className="no-data">
-                    <span style={{fontSize:24}}>📊</span>
-                    <span style={{color:C.muted}}>Sélectionnez un bourdon dans la liste</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {tab==="impact" && (
-              <div style={{flex:1,overflowY:"auto"}}>
-                <ImpactTab bees={bees} selectedIds={selectedIds} compareData={compareData}/>
-              </div>
-            )}
-          </div>
-
-          {/* ── PANNEAU DROIT ──────────────────────────────────────────── */}
-          <div className="right-panel">
-            <div className="section-title">Résumé</div>
-            {bees.length>0 ? (
-              <>
-                {[["Total bourdons",bees.length,C.text],["Témoins",temoinBees.length,C.temoin],["Exposés",exposeBees.length,C.expose],
-                  ...(selectedIds.size>0?[["Sélectionnés",selectedIds.size,C.accent]]:[])
-                ].map(([l,v,col])=>(
-                  <div key={l} className="stat-row">
-                    <span className="stat-label">{l}</span>
-                    <span style={{fontWeight:700,color:col,fontFamily:"DM Mono",fontSize:12}}>{v}</span>
-                  </div>
-                ))}
-
-                <div style={{fontFamily:"Syne",fontWeight:700,fontSize:10,color:C.muted,
-                  textTransform:"uppercase",letterSpacing:1,margin:"14px 0 8px"}}>
-                  Comportement normal
-                </div>
-                {[[`Témoins`,tNorm,temoinBees.length,C.temoin],[`Exposés`,eNorm,exposeBees.length,C.expose]].map(([lbl,n,tot,col])=>(
-                  <div key={lbl} style={{marginBottom:10}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginBottom:3}}>
-                      <span style={{color:col,fontWeight:700}}>{lbl}</span>
-                      <span style={{color:C.muted,fontFamily:"DM Mono"}}>{n}/{tot}</span>
-                    </div>
-                    <div className="bar-track">
-                      <div className="bar-fill" style={{width:`${tot>0?(n/tot)*100:0}%`,background:col}}/>
-                    </div>
-                  </div>
-                ))}
-
-                <div style={{marginTop:12}}>
-                  {[["Fleurs T",flowersT.length],["Fleurs E",flowersE.length]
-                  ].map(([l,v])=>(
-                    <div key={l} className="stat-row">
-                      <span className="stat-label">{l}</span>
-                      <span className="stat-val">{v}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {compareData && (
-                  <div style={{marginTop:14,background:C.bg,border:`1px solid ${C.border}`,borderRadius:7,padding:10}}>
-                    <div style={{fontFamily:"Syne",fontWeight:700,fontSize:9,color:C.muted,
-                      textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>
-                      Significativité
-                    </div>
-                    {Object.entries(compareData.significance||{}).slice(0,8).map(([k,p])=>{
-                      const col = p<0.05?C.expose:p<0.1?C.orange:C.muted;
-                      return (
-                        <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",
-                          borderBottom:`1px solid ${C.border}20`,fontSize:9}}>
-                          <span style={{color:C.muted,fontFamily:"DM Mono"}}>{k.replace(/_/g," ")}</span>
-                          <span style={{fontWeight:700,color:col,fontFamily:"DM Mono"}}>{p}</span>
+                      {pb&&(
+                        <div style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:7,padding:10,marginBottom:12}}>
+                          {[["Prédiction SVM",pb.is_normal?"Normal (0)":"Anormal (1)"],
+                            ["Probabilité exposé",(pb.svm_proba*100).toFixed(1)+"%"],
+                            ["Distance frontière",pb.dist_frontier.toFixed(4)],
+                            ["PC1",pb.pca_x.toFixed(4)],["PC2",pb.pca_y.toFixed(4)]
+                          ].map(([l,v])=>(
+                            <div key={l} className="sr"><span className="sl">{l}</span><span className="sv">{v}</span></div>
+                          ))}
                         </div>
-                      );
-                    })}
-
-                  </div>
+                      )}
+                      <div style={{fontFamily:"Syne",fontWeight:700,fontSize:9,color:C.muted,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Features calculées</div>
+                      {Object.entries(FEAT_LABELS).map(([k,lbl])=>{
+                        const v=selBee.stats[k];
+                        const fd=mlData?.feature_discrimination?.[k];
+                        const p=fd?.p_mannwhitney;
+                        return (
+                          <div key={k} className="sr">
+                            <span className="sl">{lbl}</span>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              {p!=null&&p<.1&&<span style={{fontSize:8,color:p<.05?C.expose:C.orange}}>p={p.toFixed(3)}</span>}
+                              <span className="sv">{typeof v==="number"?v.toFixed(5):v}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })():(
+                  <div className="no-data"><span style={{fontSize:24}}>!</span><span>Sélectionnez un bourdon dans la liste.</span></div>
                 )}
-              </>
-            ) : (
-              <div style={{color:C.muted,fontSize:11,lineHeight:1.7}}>
-                Chargez les deux fichiers JSON pour démarrer l'analyse.
               </div>
             )}
           </div>
 
+          <div className="right">
+            <div className="sec-title">Résumé</div>
+            {[["Total",bees.length,C.text],["Témoins",tBees.length,C.temoin],["Exposés",eBees.length,C.expose]].map(([l,v,c])=>(
+              <div key={l} className="sr"><span className="sl">{l}</span><span className="sv" style={{color:c}}>{v}</span></div>
+            ))}
+
+            {mlData&&(
+              <></>
+            )}
+            {!mlData&&<div style={{color:C.muted,fontSize:11,lineHeight:1.7,marginTop:8}}>Chargez les deux fichiers JSON pour démarrer l'analyse.</div>}
+          </div>
         </div>
       </div>
     </>
