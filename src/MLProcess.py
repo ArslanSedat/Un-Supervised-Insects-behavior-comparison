@@ -27,10 +27,11 @@ FEAT_NAMES = [
     "entropie_angles", "autocorr_dir", "taux_immobilite", "linearite",
     "temps_jusqua_immobilite", "ratio_mouvement_arret", "nb_bouts",
     "dist_ruche_mean", "nb_visites_plantes", "temps_proche_plantes",
-    "biais_vers_ruche", "angle_moyen_ruche", "retour_ruche",
+    "retour_ruche",
 ]
 
 
+#Calcul des features
 def compute_features(traj, ruche=None, flowers=None):
     if len(traj) < 5:
         return None, None
@@ -91,7 +92,6 @@ def compute_features(traj, ruche=None, flowers=None):
     pca1.fit(pts - pts.mean(axis=0))
     linearite = float(pca1.explained_variance_ratio_[0])
 
-    # Nouvelles features
     immobile = vit < 0.01
     temps_jusqua_immobilite = float(np.where(immobile)[0][0] if np.any(immobile) else n)
     
@@ -118,27 +118,6 @@ def compute_features(traj, ruche=None, flowers=None):
     nb_visites_plantes = float(nb_visites_plantes)
     temps_proche_plantes = float(temps_proche_plantes)
     
-    direction_moyennes = np.diff(pts[:, :2], axis=0)
-    direction_moyennes_norm = direction_moyennes / (np.linalg.norm(direction_moyennes, axis=1, keepdims=True) + 1e-10)
-    direction_vers_ruche = (ruche_arr - pts[:-1, :2]) / (np.linalg.norm(ruche_arr - pts[:-1, :2], axis=1, keepdims=True) + 1e-10)
-    dot_products = np.sum(direction_moyennes_norm * direction_vers_ruche, axis=1)
-    biais_vers_ruche = float(np.mean(dot_products))
-    
-    vecteurs_ruche = ruche_arr - pts[:, :2]
-    distances_ruche = np.linalg.norm(vecteurs_ruche, axis=1)
-    # Éviter division par zéro : filtrer les vecteurs nuls
-    mask_nonzero = distances_ruche > 1e-6
-    
-    if np.any(mask_nonzero):
-        vecteurs_ruche_norm = vecteurs_ruche[mask_nonzero] / distances_ruche[mask_nonzero, np.newaxis]
-        angles_vers_ruche = np.arctan2(vecteurs_ruche_norm[:, 1], vecteurs_ruche_norm[:, 0])
-        angle_moyen_ruche = float(np.arctan2(np.nanmean(np.sin(angles_vers_ruche)), np.nanmean(np.cos(angles_vers_ruche))))
-    else:
-        angle_moyen_ruche = 0.0
-    
-    if np.isnan(angle_moyen_ruche):
-        angle_moyen_ruche = 0.0
-    
     dist_init_ruche = float(np.sqrt(np.sum((pts[0, :2] - ruche_arr) ** 2)))
     dist_final_ruche = float(np.sqrt(np.sum((pts[-1, :2] - ruche_arr) ** 2)))
     retour_ruche = float(1.0 if dist_final_ruche < dist_init_ruche else 0.0)
@@ -151,7 +130,7 @@ def compute_features(traj, ruche=None, flowers=None):
         entropie, autocorr, taux_imm, linearite,
         temps_jusqua_immobilite, ratio_mouvement_arret, nb_bouts,
         dist_ruche_mean, nb_visites_plantes, temps_proche_plantes,
-        biais_vers_ruche, angle_moyen_ruche, retour_ruche,
+        retour_ruche,
     ]
     
     for k, v in zip(FEAT_NAMES, feat_values):

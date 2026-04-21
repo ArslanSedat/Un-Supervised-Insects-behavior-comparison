@@ -17,8 +17,7 @@ const FEAT_LABELS = {
   taux_immobilite:"Taux immobilité", linearite:"Linéarité PCA",
   temps_jusqua_immobilite:"Tps jusqu'à immobilité", ratio_mouvement_arret:"Ratio mouvement/arrêt",
   nb_bouts:"Nb bouts", dist_ruche_mean:"Dist. ruche moy.", nb_visites_plantes:"Visites plantes",
-  temps_proche_plantes:"Tps près plantes", biais_vers_ruche:"Biais vers ruche",
-  angle_moyen_ruche:"Angle moyen ruche", retour_ruche:"Retour ruche",
+  temps_proche_plantes:"Tps près plantes", retour_ruche:"Retour ruche",
 };
 
 const css = `
@@ -104,8 +103,6 @@ function parseJSON(json, groupOverride) {
         dist_ruche_mean:         metr.dist_ruche_mean ?? 0,
         nb_visites_plantes:      metr.nb_visites_plantes ?? 0,
         temps_proche_plantes:    metr.temps_proche_plantes ?? 0,
-        biais_vers_ruche:        metr.biais_vers_ruche ?? 0,
-        angle_moyen_ruche:       metr.angle_moyen_ruche ?? 0,
         retour_ruche:            metr.retour_ruche ?? 0,
       },
     });
