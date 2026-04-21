@@ -1,19 +1,16 @@
+# à modifier avant envoi définitif
+
 FROM node:20
 
 WORKDIR /app
 
-# Installer Python et pip
-RUN apt-get update && apt-get install -y python3 python3-pip python3-venv && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y python3 python3-pip python3-venv python3-dev build-essential && rm -rf /var/lib/apt/lists/*
 
-# Copier tout le projet
 COPY . .
 
-# Créer un venv frais dans le conteneur et installer les dépendances Python
-RUN python3 -m venv /app/.venv && \
-    . /app/.venv/bin/activate && \
-    pip install Flask Flask-CORS scikit-learn
+RUN python3 -m venv /app/venv && \
+    /app/venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Installer les dépendances Node.js
 RUN npm install
 
 EXPOSE 5000 8080

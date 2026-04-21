@@ -126,7 +126,7 @@ function render3D(canvas, bees, flowers, rucheT, rucheE, worldSize, selIds, hove
     const p=1/(1-zz*.1);
     return {x:ox+xz*sc*p, y:oy+yy*sc*p};
   };
-  // Grille
+  //Grille
   ctx.strokeStyle=C.border; ctx.lineWidth=.5;
   for(let i=0;i<=8;i++){
     const xi=worldSize[0]*i/8, yi=worldSize[1]*i/8;
@@ -135,7 +135,7 @@ function render3D(canvas, bees, flowers, rucheT, rucheE, worldSize, selIds, hove
     ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();
     ctx.beginPath();ctx.moveTo(q1.x,q1.y);ctx.lineTo(q2.x,q2.y);ctx.stroke();
   }
-  // Plantes
+  //Plantes
   flowers.forEach(([fx,fy,fz,fid])=>{
     const p=proj({x:fx,y:fy,z:fz});
     ctx.fillStyle="#fbbf24"; ctx.beginPath(); ctx.arc(p.x,p.y,5,0,2*Math.PI); ctx.fill();
@@ -143,7 +143,7 @@ function render3D(canvas, bees, flowers, rucheT, rucheE, worldSize, selIds, hove
     ctx.fillStyle="#000"; ctx.font="bold 7px DM Sans"; ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText(`F${fid+1}`,p.x,p.y);
   });
-  // Ruches
+  //Ruches
   [[rucheT,C.temoin,"T"],[rucheE,C.expose,"E"]].forEach(([r,col,lbl])=>{
     if(!r) return;
     const p=proj({x:r[0],y:r[1],z:r[2]});
@@ -154,14 +154,14 @@ function render3D(canvas, bees, flowers, rucheT, rucheE, worldSize, selIds, hove
     ctx.fillStyle=col; ctx.font="bold 8px DM Sans"; ctx.textAlign="left"; ctx.textBaseline="bottom";
     ctx.fillText("Ruche "+lbl,p.x+9,p.y-2);
   });
-  // Trajectoires
+  //Trajectoires
   const hasSel = selIds.size > 0;
   bees.forEach(bee => {
     if (!bee.points.length) return;
     const pr = bee.points.map(p => proj(p));
     const isSel = selIds.has(bee.id), isHov = hoverBee===bee.id;
 
-    // Couleur selon mode
+    //couleur selon mode
     let col;
     const pbee = mlData?.svm?.per_bee?.[bee.id];
     if (colorMode === "normal" && pbee) {
@@ -206,7 +206,6 @@ function PcaSvmCanvas({ mlData, colorMode, selIds, onClickBee }) {
     const toX = v => pad.l + (v-x1_range[0])/(x1_range[1]-x1_range[0])*(W-pad.l-pad.r);
     const toY = v => H-pad.b - (v-x2_range[0])/(x2_range[1]-x2_range[0])*(H-pad.t-pad.b);
 
-    // Fond coloré (score SVM)
     const res = Z_prob.length;
     const cw = (W-pad.l-pad.r)/res, ch = (H-pad.t-pad.b)/res;
     Z_prob.forEach((row, ri) => row.forEach((p, ci) => {
@@ -216,7 +215,6 @@ function PcaSvmCanvas({ mlData, colorMode, selIds, onClickBee }) {
       ctx.fillRect(px, py, cw+1, ch+1);
     }));
 
-    // Frontière SVM (contour p=0.5)
     ctx.strokeStyle = "#555"; ctx.lineWidth = 1.5; ctx.setLineDash([5,3]);
     for (let ri=0; ri<res-1; ri++) for (let ci=0; ci<res-1; ci++) {
       const p00=Z_prob[ri][ci], p10=Z_prob[ri+1][ci];
@@ -228,19 +226,18 @@ function PcaSvmCanvas({ mlData, colorMode, selIds, onClickBee }) {
     }
     ctx.setLineDash([]);
 
-    // Axes
     ctx.strokeStyle=C.border; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,H-pad.b); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(pad.l,H-pad.b); ctx.lineTo(W-pad.r,H-pad.b); ctx.stroke();
 
-    // Labels axes
+    //Labels axes
     const varE = mlData.pca.variance_explained;
     ctx.fillStyle=C.muted; ctx.font="10px DM Sans"; ctx.textAlign="center";
     ctx.fillText(`PC1 (${(varE[0]*100).toFixed(1)}%)`, (pad.l+W-pad.r)/2, H-10);
     ctx.save(); ctx.translate(12, (pad.t+H-pad.b)/2); ctx.rotate(-Math.PI/2);
     ctx.fillText(`PC2 (${(varE[1]*100).toFixed(1)}%)`, 0, 0); ctx.restore();
 
-    // Points
+    //Points
     bees_data.forEach(([id, b]) => {
       const px = toX(b.pca_x), py = toY(b.pca_y);
       const isSel = selIds?.has(id);
@@ -259,7 +256,7 @@ function PcaSvmCanvas({ mlData, colorMode, selIds, onClickBee }) {
       ctx.lineWidth = isSel ? 2.5 : 1.2;
       ctx.globalAlpha = 0.9;
 
-      // Forme : groupe (cercle=témoin, triangle=exposé)
+      //cercle=témoin et triangle=exposé
       ctx.beginPath();
       if (b.group === 0) {
         ctx.arc(px, py, isSel?8:6, 0, 2*Math.PI);
@@ -271,7 +268,6 @@ function PcaSvmCanvas({ mlData, colorMode, selIds, onClickBee }) {
       ctx.fill(); ctx.stroke();
       ctx.globalAlpha=1;
 
-      // Label
       ctx.fillStyle = C.text; ctx.font="bold 9px DM Mono"; ctx.textAlign="center";
       ctx.fillText(id.replace("BE-",""), px, py-11);
     });
@@ -389,7 +385,6 @@ function ImpactTab({ bees, mlData }) {
   const mT={}, mE={};
   keys.forEach(k=>{mT[k]=avg(tBees,k);mE[k]=avg(eBees,k);});
 
-  // Trier par effect size
   const sortedKeys = [...keys].sort((a,b)=>
     Math.abs(disc[b]?.effect_size_rb||0)-Math.abs(disc[a]?.effect_size_rb||0));
 
