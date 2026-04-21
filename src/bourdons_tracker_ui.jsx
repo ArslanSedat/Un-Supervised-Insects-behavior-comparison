@@ -60,7 +60,7 @@ const css = `
   .tbl tr:hover td{background:${C.bg}}
 `;
 
-// ─── PARSE JSON ───────────────────────────────────────────────────────────────
+//PARSE JSON
 function parseJSON(json, groupOverride) {
   const cage = json.metadonnees?.cage_experimentale || {};
   const ruche = cage.ruche_position_m
@@ -110,7 +110,7 @@ function parseJSON(json, groupOverride) {
   return { flowers, ruche, worldSize, bees };
 }
 
-// ─── RENDU 3D ─────────────────────────────────────────────────────────────────
+//RENDU 3D
 function render3D(canvas, bees, flowers, rucheT, rucheE, worldSize, selIds, hoverBee, panX, panY, zoom, rotX, rotY, colorMode, mlData) {
   const ctx = canvas.getContext("2d");
   const W = canvas.width = canvas.offsetWidth, H = canvas.height = canvas.offsetHeight;
@@ -184,7 +184,7 @@ function render3D(canvas, bees, flowers, rucheT, rucheE, worldSize, selIds, hove
   });
 }
 
-// ─── CANVAS PCA + SVM ─────────────────────────────────────────────────────────
+//CANVA PCA + SVM
 function PcaSvmCanvas({ mlData, colorMode, selIds, onClickBee }) {
   const ref = useRef(null);
 
@@ -300,7 +300,7 @@ function PcaSvmCanvas({ mlData, colorMode, selIds, onClickBee }) {
   return <canvas ref={ref} style={{width:"100%",height:"100%",position:"absolute",top:0,left:0,cursor:"crosshair"}} onClick={handleClick}/>;
 }
 
-// ─── ONGLET FEATURES DISCRIMINATION ─────────────────────────────────────────
+//ONGLET FEATURES
 function FeatDiscTab({ mlData }) {
   const [sort, setSort] = useState("effect");
   if (!mlData?.feature_discrimination) return (
@@ -376,7 +376,7 @@ function FeatDiscTab({ mlData }) {
   );
 }
 
-// ─── ONGLET IMPACT ────────────────────────────────────────────────────────────
+//ONGLET IMPACT
 function ImpactTab({ bees, mlData }) {
   const tBees = bees.filter(b=>b.group==="temoin");
   const eBees = bees.filter(b=>b.group==="expose");
@@ -430,7 +430,7 @@ function ImpactTab({ bees, mlData }) {
   );
 }
 
-// ─── COMPOSANT PRINCIPAL ──────────────────────────────────────────────────────
+//COMPOSANTE PRINCIPALE
 export default function BourdonTracker() {
   const [bees,       setBees]       = useState([]);
   const [flowersT,   setFlowersT]   = useState([]);
