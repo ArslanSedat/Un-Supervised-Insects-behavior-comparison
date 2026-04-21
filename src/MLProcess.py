@@ -1,9 +1,3 @@
-"""
-Backend Flask — Analyse trajectoires de bourdons
-Pipeline : Features → StandardScaler → PCA → SVM (littérature écotoxicologie)
-Refs : Tosi et al. 2017 Scientific Reports, Gill et al. 2012 Science, Batschelet 1981
-"""
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json, math, warnings
@@ -301,11 +295,9 @@ def upload_file():
                 continue
             feat_dict, feat_vec = compute_features(val.get("trajectoire", []), ruche=ruche, flowers=flowers)
             
-            # Créer des métriques par défaut pour l'affichage UI, même si invalid
             if feat_dict is None:
                 feat_dict = {fname: 0.0 for fname in FEAT_NAMES}
             else:
-                # Si valide, ajouter au SVM
                 bee_id = val.get("id", key)
                 if group in store and feat_vec is not None:
                     store[group]["feats"].append(feat_vec)
