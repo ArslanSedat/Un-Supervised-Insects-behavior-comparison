@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
-// ─── PALETTE ──────────────────────────────────────────────────────────────────
+//PALETTE
 const C = {
   bg:      "#f9fafb", panel:  "#ffffff", border: "#e5e9ef",
   accent:  "#2563eb", text:   "#111827", muted:  "#6b7280",
