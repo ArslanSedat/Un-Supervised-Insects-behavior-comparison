@@ -5,7 +5,7 @@ const C = {
   bg:      "#f9fafb", panel:  "#ffffff", border: "#e5e9ef",
   accent:  "#2563eb", text:   "#111827", muted:  "#6b7280",
   temoin:  "#0ea5e9", expose: "#ef4444", green:  "#10b981",
-  orange:  "#f59e0b", normal: "#10b981", abnorm: "#f97316",
+  orange:  "#f59e0b", normal: "#0c09c4", abnorm: "#ff0000",
 };
 
 const FEAT_LABELS = {
@@ -15,6 +15,10 @@ const FEAT_LABELS = {
   rayon_giration:"Rayon giration", aire:"Aire convexe", z_std:"Variance Z",
   entropie_angles:"Entropie angulaire", autocorr_dir:"Autocorr. direction",
   taux_immobilite:"Taux immobilité", linearite:"Linéarité PCA",
+  temps_jusqua_immobilite:"Tps jusqu'à immobilité", ratio_mouvement_arret:"Ratio mouvement/arrêt",
+  nb_bouts:"Nb bouts", dist_ruche_mean:"Dist. ruche moy.", nb_visites_plantes:"Visites plantes",
+  temps_proche_plantes:"Tps près plantes", biais_vers_ruche:"Biais vers ruche",
+  angle_moyen_ruche:"Angle moyen ruche", retour_ruche:"Retour ruche",
 };
 
 const css = `
@@ -94,6 +98,15 @@ function parseJSON(json, groupOverride) {
         autocorr_dir:    metr.autocorr_dir    ?? 0,
         taux_immobilite: metr.taux_immobilite ?? 0,
         linearite:       metr.linearite       ?? 0,
+        temps_jusqua_immobilite: metr.temps_jusqua_immobilite ?? 0,
+        ratio_mouvement_arret:   metr.ratio_mouvement_arret ?? 0,
+        nb_bouts:                metr.nb_bouts ?? 0,
+        dist_ruche_mean:         metr.dist_ruche_mean ?? 0,
+        nb_visites_plantes:      metr.nb_visites_plantes ?? 0,
+        temps_proche_plantes:    metr.temps_proche_plantes ?? 0,
+        biais_vers_ruche:        metr.biais_vers_ruche ?? 0,
+        angle_moyen_ruche:       metr.angle_moyen_ruche ?? 0,
+        retour_ruche:            metr.retour_ruche ?? 0,
       },
     });
   }
@@ -554,12 +567,7 @@ export default function BourdonTracker() {
       <style>{css}</style>
       <div className="app">
         <div className="hdr">
-          <h1>BumbleBee ML</h1>
-          <span style={{fontSize:9,color:C.muted,fontFamily:"DM Mono"}}>
-            T:{tBees.length} · E:{eBees.length}
-            {mlData?.svm && ` · LOO ${(mlData.svm.accuracy_loo*100).toFixed(0)}% · AUC ${(mlData.svm.auc_loo*100).toFixed(0)}%`}
-            {mlData && ` · Normal:${mlData.n_normal} Anormal:${mlData.n_abnormal}`}
-          </span>
+          <h1>BOURDONS</h1>
           {loading&&<span style={{marginLeft:"auto",fontSize:10,color:C.accent,fontWeight:700,fontFamily:"DM Mono"}}>⟳ Calcul ML…</span>}
         </div>
 

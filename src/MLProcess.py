@@ -31,11 +31,14 @@ FEAT_NAMES = [
     "tortuosite", "dist_totale", "msd_mean", "msd_slope",
     "katz_fd", "rayon_giration", "aire", "z_std",
     "entropie_angles", "autocorr_dir", "taux_immobilite", "linearite",
+    "temps_jusqua_immobilite", "ratio_mouvement_arret", "nb_bouts",
+    "dist_ruche_mean", "nb_visites_plantes", "temps_proche_plantes",
+    "biais_vers_ruche", "angle_moyen_ruche", "retour_ruche",
 ]
 
 
-def compute_features(traj):
-    if len(traj) < 10:
+def compute_features(traj, ruche=None, flowers=None):
+    if len(traj) < 5:
         return None, None
     pts = np.array([[p["x"], p["y"], p["z"]] for p in traj], dtype=float)
     vit = np.array([p.get("vitesse_ms", 0) for p in traj], dtype=float)
@@ -94,18 +97,76 @@ def compute_features(traj):
     pca1.fit(pts - pts.mean(axis=0))
     linearite = float(pca1.explained_variance_ratio_[0])
 
-    feat_dict = {k: round(v, 5) for k, v in zip(FEAT_NAMES, [
+    # Nouvelles features
+    immobile = vit < 0.01
+    temps_jusqua_immobilite = float(np.where(immobile)[0][0] if np.any(immobile) else n)
+    
+    mouvement = vit >= 0.01
+    n_mouvement = float(np.sum(mouvement))
+    n_arret = float(np.sum(immobile))
+    ratio_mouvement_arret = float(n_mouvement / (n_arret + 1e-6))
+    
+    transitions = np.diff(mouvement.astype(int))
+    nb_bouts = float(np.sum(transitions == 1))
+    
+    ruche_arr = np.array(ruche[:2]) if ruche else np.array([0.0, 0.0])
+    dist_ruche = np.sqrt(np.sum((pts[:, :2] - ruche_arr) ** 2, axis=1))
+    dist_ruche_mean = float(np.mean(dist_ruche))
+    
+    nb_visites_plantes = 0.0
+    temps_proche_plantes = 0.0
+    if flowers:
+        for fx, fy, fz, fid in flowers:
+            flower_pos = np.array([fx, fy])
+            dist_flower = np.sqrt(np.sum((pts[:, :2] - flower_pos) ** 2, axis=1))
+            nb_visites_plantes += float(np.sum(dist_flower < 0.1))
+            temps_proche_plantes += float(np.sum(dist_flower < 0.15))
+    nb_visites_plantes = float(nb_visites_plantes)
+    temps_proche_plantes = float(temps_proche_plantes)
+    
+    direction_moyennes = np.diff(pts[:, :2], axis=0)
+    direction_moyennes_norm = direction_moyennes / (np.linalg.norm(direction_moyennes, axis=1, keepdims=True) + 1e-10)
+    direction_vers_ruche = (ruche_arr - pts[:-1, :2]) / (np.linalg.norm(ruche_arr - pts[:-1, :2], axis=1, keepdims=True) + 1e-10)
+    dot_products = np.sum(direction_moyennes_norm * direction_vers_ruche, axis=1)
+    biais_vers_ruche = float(np.mean(dot_products))
+    
+    vecteurs_ruche = ruche_arr - pts[:, :2]
+    distances_ruche = np.linalg.norm(vecteurs_ruche, axis=1)
+    # Éviter division par zéro : filtrer les vecteurs nuls
+    mask_nonzero = distances_ruche > 1e-6
+    
+    if np.any(mask_nonzero):
+        vecteurs_ruche_norm = vecteurs_ruche[mask_nonzero] / distances_ruche[mask_nonzero, np.newaxis]
+        angles_vers_ruche = np.arctan2(vecteurs_ruche_norm[:, 1], vecteurs_ruche_norm[:, 0])
+        angle_moyen_ruche = float(np.arctan2(np.nanmean(np.sin(angles_vers_ruche)), np.nanmean(np.cos(angles_vers_ruche))))
+    else:
+        angle_moyen_ruche = 0.0
+    
+    if np.isnan(angle_moyen_ruche):
+        angle_moyen_ruche = 0.0
+    
+    dist_init_ruche = float(np.sqrt(np.sum((pts[0, :2] - ruche_arr) ** 2)))
+    dist_final_ruche = float(np.sqrt(np.sum((pts[-1, :2] - ruche_arr) ** 2)))
+    retour_ruche = float(1.0 if dist_final_ruche < dist_init_ruche else 0.0)
+
+    feat_dict = {}
+    feat_values = [
         vitesse_moy, vitesse_std, stabilite, acc_rms,
         tortuosite, dist_totale, msd_mean, msd_slope,
         katz_fd, rayon_gir, aire, z_std,
         entropie, autocorr, taux_imm, linearite,
-    ])}
-    feat_vec = [
-        vitesse_moy, vitesse_std, stabilite, acc_rms,
-        tortuosite, dist_totale, msd_mean, msd_slope,
-        katz_fd, rayon_gir, aire, z_std,
-        entropie, autocorr, taux_imm, linearite,
+        temps_jusqua_immobilite, ratio_mouvement_arret, nb_bouts,
+        dist_ruche_mean, nb_visites_plantes, temps_proche_plantes,
+        biais_vers_ruche, angle_moyen_ruche, retour_ruche,
     ]
+    
+    for k, v in zip(FEAT_NAMES, feat_values):
+        # Remplacer NaN/inf par 0
+        if not np.isfinite(v):
+            v = 0.0
+        feat_dict[k] = round(float(v), 5)
+    
+    feat_vec = [0.0 if not np.isfinite(v) else float(v) for v in feat_values]
     return feat_dict, feat_vec
 
 
@@ -230,17 +291,27 @@ def upload_file():
         group = request.form.get("group", "")
         data  = json.load(file)
 
+        cage = data.get("metadonnees", {}).get("cage_experimentale", {})
+        ruche_pos = cage.get("ruche_position_m", {})
+        ruche = [ruche_pos.get("x", 0.1), ruche_pos.get("y", 0.1), ruche_pos.get("z", 0)]
+        flowers = [(p["x"], p["y"], p.get("z", 0), p.get("id", i)) for i, p in enumerate(cage.get("plantes", []))]
+
         for key, val in data.items():
             if not key.startswith("bourdon_"):
                 continue
-            feat_dict, feat_vec = compute_features(val.get("trajectoire", []))
+            feat_dict, feat_vec = compute_features(val.get("trajectoire", []), ruche=ruche, flowers=flowers)
+            
+            # Créer des métriques par défaut pour l'affichage UI, même si invalid
             if feat_dict is None:
-                continue
+                feat_dict = {fname: 0.0 for fname in FEAT_NAMES}
+            else:
+                # Si valide, ajouter au SVM
+                bee_id = val.get("id", key)
+                if group in store and feat_vec is not None:
+                    store[group]["feats"].append(feat_vec)
+                    store[group]["ids"].append(bee_id)
+            
             val["metriques"] = feat_dict
-            bee_id = val.get("id", key)
-            if group in store and feat_vec is not None:
-                store[group]["feats"].append(feat_vec)
-                store[group]["ids"].append(bee_id)
 
         ml_result = None
         if store["temoin"]["feats"] and store["expose"]["feats"]:
