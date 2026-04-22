@@ -32,7 +32,7 @@ def upload_file():
             if not key.startswith("bourdon_"):
                 continue
             
-            feat_dict, feat_vec = compute_features(val.get("trajectoire", []), ruche=ruche, flowers=flowers)
+            feat_dict, feat_vec = compute_features(val.get("trajectoire", []), ruche=ruche, flowers=flowers, stats=val.get("statistiques", None))
             
             if feat_dict is None:
                 feat_dict = {fname: 0.0 for fname in FEAT_NAMES}

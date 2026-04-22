@@ -15,7 +15,7 @@ FEAT_NAMES = [
 ]
 
 
-def compute_features(traj, ruche=None, flowers=None):
+def compute_features(traj, ruche=None, flowers=None, stats=None):
     if len(traj) < 5:
         return None, None
     
@@ -93,18 +93,26 @@ def compute_features(traj, ruche=None, flowers=None):
     
     nb_visites_plantes = 0.0
     temps_proche_plantes = 0.0
-    if flowers:
-        for fx, fy, fz, fid in flowers:
-            flower_pos = np.array([fx, fy])
-            dist_flower = np.sqrt(np.sum((pts[:, :2] - flower_pos) ** 2, axis=1))
-            nb_visites_plantes += float(np.sum(dist_flower < 0.1))
-            temps_proche_plantes += float(np.sum(dist_flower < 0.15))
-    nb_visites_plantes = float(nb_visites_plantes)
-    temps_proche_plantes = float(temps_proche_plantes)
+    if stats and "visites_plantes" in stats:
+        nb_visites_plantes = float(stats["visites_plantes"])
+    elif stats and "duree_butinage" in stats:
+        temps_proche_plantes = float(stats["duree_butinage"])
+    else:
+        if flowers:
+            for fx, fy, fz, fid in flowers:
+                flower_pos = np.array([fx, fy])
+                dist_flower = np.sqrt(np.sum((pts[:, :2] - flower_pos) ** 2, axis=1))
+                nb_visites_plantes += float(np.sum(dist_flower < 0.1))
+                temps_proche_plantes += float(np.sum(dist_flower < 0.15))
+        nb_visites_plantes = float(nb_visites_plantes)
+        temps_proche_plantes = float(temps_proche_plantes)
     
     dist_init_ruche = float(np.sqrt(np.sum((pts[0, :2] - ruche_arr) ** 2)))
     dist_final_ruche = float(np.sqrt(np.sum((pts[-1, :2] - ruche_arr) ** 2)))
-    retour_ruche = float(1.0 if dist_final_ruche < dist_init_ruche else 0.0)
+    if stats and "retour_a_la_ruche" in stats:
+        retour_ruche = float(stats["retour_a_la_ruche"])
+    else:
+        retour_ruche = float(1.0 if dist_final_ruche < dist_init_ruche else 0.0)
 
     feat_dict = {}
     feat_values = [
