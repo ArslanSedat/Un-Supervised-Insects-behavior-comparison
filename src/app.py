@@ -44,6 +44,18 @@ def upload_file():
             
             val["metriques"] = feat_dict
 
+        data["_ml"] = None
+        return jsonify(data)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/compute-ml", methods=["POST"])
+def compute_ml():
+    try:
         ml_result = None
         if store["temoin"]["feats"] and store["expose"]["feats"]:
             try:
@@ -54,9 +66,8 @@ def upload_file():
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-
-        data["_ml"] = ml_result
-        return jsonify(data)
+        
+        return jsonify({"_ml": ml_result})
 
     except Exception as e:
         import traceback

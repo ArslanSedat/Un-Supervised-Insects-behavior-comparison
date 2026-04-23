@@ -6,10 +6,9 @@ kinematic/behavioral descriptors with machine learning classification.
 
 - `src/app.py`: entry point; Flask server handling file uploads, feature computation, and ML pipeline.
 
-- `src/features.py`: computes 23 kinematic and behavioral descriptors from 3D trajectories.
+- `src/features.py`: computes 22 kinematic and behavioral descriptors from 3D trajectories.
 
-- `src/ml_model.py`: machine learning pipeline (PCA dimensionality reduction, SVM classification,
-Leave-One-Out validation, statistical tests).
+- `src/ml_model.py`: machine learning pipeline (PCA dimensionality reduction with cross-validation, SVM classification, Leave-One-Out validation, statistical tests).
 
 - `src/bourdons_tracker_ui.jsx`: React frontend component for interactive visualization and analysis.
 
@@ -24,11 +23,13 @@ Kinematic, trajectory geometry, directional dynamics, movement behavior, and spa
 
 - `acc_rms`: root mean square acceleration.
 
-- `tortuosite`: ratio of straight-line distance to path length.
+- `sinuosity`: sinuosity index (Bovet & Benhamou, 1988) measuring trajectory curvedness. Replaces older measures (straightness and Katz FD) which are unsuitable for exploratory, non-goal-directed paths (Benhamou 2004).
 
 - `dist_totale`: total path length (m).
 
-- `katz_fd`: Katz fractal dimension (path complexity).
+- `msd_mean`: mean squared displacement across multiple lags.
+
+- `msd_slope`: MSD slope in log-log space (diffusive scaling).
 
 - `rayon_giration`: radius of gyration (m).
 
@@ -49,10 +50,6 @@ Kinematic, trajectory geometry, directional dynamics, movement behavior, and spa
 - `ratio_mouvement_arret`: movement vs immobility ratio.
 
 - `nb_bouts`: number of movement bouts (transitions).
-
-- `msd_mean`: mean squared displacement across multiple lags.
-
-- `msd_slope`: MSD slope in log-log space (diffusive scaling).
 
 - `dist_ruche_mean`: mean distance to hive (m).
 
