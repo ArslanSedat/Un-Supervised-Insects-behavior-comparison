@@ -52,7 +52,13 @@ def compute_features(traj, ruche=None, flowers=None, stats=None, time_step=0.1):
     lags     = [1, 5, 10, 20, 50]
     msds     = [float(np.mean(np.sum((pts[l:] - pts[:-l]) ** 2, axis=1))) if l < n else 0.0 for l in lags]
     msd_mean  = float(np.mean(msds))
-    msd_slope = float(np.polyfit(np.log1p(lags), np.log1p(msds), 1)[0])
+    valid = [(l, m) for l, m in zip(lags, msds) if m > 0]
+    if len(valid) >= 2:
+        log_lags = np.log([l for l, m in valid])
+        log_msds = np.log([m for l, m in valid])
+        msd_slope = float(np.polyfit(log_lags, log_msds, 1)[0])
+    else:
+        msd_slope = 0.0
 
     #Gyration Radius & Area
     centroid  = pts.mean(axis=0)
@@ -82,9 +88,9 @@ def compute_features(traj, ruche=None, flowers=None, stats=None, time_step=0.1):
             autocorr = float(np.mean(dot_products))
         else:
             autocorr = 0.0
+    except: autocorr = 0.0
 
     #Immobility Rate & Linearity
-    except: autocorr = 0.0
 
     taux_imm = float(np.mean(vit < 0.01))
 
@@ -124,8 +130,9 @@ def compute_features(traj, ruche=None, flowers=None, stats=None, time_step=0.1):
     temps_proche_plantes = 0.0
     if stats and "visites_plantes" in stats:
         nb_visites_plantes = float(stats["visites_plantes"])
-    elif stats and "duree_butinage" in stats:
+    if stats and "duree_butinage" in stats:
         temps_proche_plantes = float(stats["duree_butinage"])
+    # à revoir
     else:
         if flowers:
             for fx, fy, fz, fid in flowers:
@@ -133,11 +140,11 @@ def compute_features(traj, ruche=None, flowers=None, stats=None, time_step=0.1):
                 dist_flower = np.sqrt(np.sum((pts[:, :2] - flower_pos) ** 2, axis=1))
                 nb_visites_plantes += float(np.sum(dist_flower < 0.1))
                 temps_proche_plantes += float(np.sum(dist_flower < 0.15))
-
-    #Hive Return
-        nb_visites_plantes = float(nb_visites_plantes)
-        temps_proche_plantes = float(temps_proche_plantes)
+    nb_visites_plantes = float(nb_visites_plantes)
+    temps_proche_plantes = float(temps_proche_plantes)
     
+    #Hive Return
+
     dist_init_ruche = float(np.sqrt(np.sum((pts[0, :2] - ruche_arr) ** 2)))
     dist_final_ruche = float(np.sqrt(np.sum((pts[-1, :2] - ruche_arr) ** 2)))
     if stats and "retour_a_la_ruche" in stats:

@@ -4,7 +4,7 @@ import json
 import warnings
 
 from features import compute_features, FEAT_NAMES
-from ml_model import run_pca_svm
+from ml_model import run_analysis
 
 warnings.filterwarnings("ignore")
 
@@ -23,17 +23,26 @@ def upload_file():
         file  = request.files["file"]
         group = request.form.get("group", "")
         data  = json.load(file)
-        cage = data.get("metadonnees", {}).get("cage_experimentale", {})
+
+        cage      = data.get("metadonnees", {}).get("cage_experimentale", {})
         ruche_pos = cage.get("ruche_position_m", {})
-        ruche = [ruche_pos.get("x", 0.1), ruche_pos.get("y", 0.1), ruche_pos.get("z", 0)]
-        flowers = [(p["x"], p["y"], p.get("z", 0), p.get("id", i)) for i, p in enumerate(cage.get("plantes", []))]
+        ruche     = [ruche_pos.get("x", 0.1), ruche_pos.get("y", 0.1), ruche_pos.get("z", 0)]
+        flowers   = [
+            (p["x"], p["y"], p.get("z", 0), p.get("id", i))
+            for i, p in enumerate(cage.get("plantes", []))
+        ]
 
         for key, val in data.items():
             if not key.startswith("bourdon_"):
                 continue
-            
-            feat_dict, feat_vec = compute_features(val.get("trajectoire", []), ruche=ruche, flowers=flowers, stats=val.get("statistiques", None))
-            
+
+            feat_dict, feat_vec = compute_features(
+                val.get("trajectoire", []),
+                ruche=ruche,
+                flowers=flowers,
+                stats=val.get("statistiques", None),
+            )
+
             if feat_dict is None:
                 feat_dict = {fname: 0.0 for fname in FEAT_NAMES}
             else:
@@ -41,7 +50,7 @@ def upload_file():
                 if group in store and feat_vec is not None:
                     store[group]["feats"].append(feat_vec)
                     store[group]["ids"].append(bee_id)
-            
+
             val["metriques"] = feat_dict
 
         data["_ml"] = None
@@ -59,14 +68,14 @@ def compute_ml():
         ml_result = None
         if store["temoin"]["feats"] and store["expose"]["feats"]:
             try:
-                ml_result = run_pca_svm(
+                ml_result = run_analysis(
                     store["temoin"]["feats"], store["expose"]["feats"],
                     store["temoin"]["ids"],   store["expose"]["ids"],
                 )
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-        
+
         return jsonify({"_ml": ml_result})
 
     except Exception as e:
