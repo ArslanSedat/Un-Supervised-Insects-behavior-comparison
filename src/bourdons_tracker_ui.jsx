@@ -293,7 +293,7 @@ function ShapTab({ mlData }) {
       <img src={mlData.shap.plot_img} style={{maxWidth:"100%",height:"auto",borderRadius:8,marginBottom:16}} />
       <div style={{fontSize:11,color:C.muted,lineHeight:1.6,maxWidth:600}}>
         <strong style={{color:C.text}}>Beeswarm SHAP :</strong> Chaque point représente un échantillon.
-        L'axe horizontal = SHAP value (contribution de la variable à la décision du modèle), couleur = valeur de la feature.
+        L'axe horizontal = SHAP value (contribution de la variable à la décision du modèle), couleur = valeur de la feature (tend vers le rouge = valeur de la feature plus élevée).
       </div>
     </div>
   );
@@ -317,24 +317,16 @@ function ImpactTab({ bees, mlData, selIds }) {
   return (
     <div style={{padding:16,overflowY:"auto",height:"100%"}}>
       <div style={{fontFamily:"Syne",fontWeight:800,fontSize:14,marginBottom:4}}>Profil comparatif</div>
-      <div style={{color:C.muted,fontSize:11,marginBottom:16,lineHeight:1.6}}>Triées par effect size · Médiane préférée à la moyenne</div>
+      <div style={{color:C.muted,fontSize:11,marginBottom:16,lineHeight:1.6}}>Triées par "effect size" · Médiane (ou moyenne???)</div>
       {sortedKeys.map(k=>{
         const tV=avg(tBees,k), eV=avg(eBees,k), nV=avg(nBees,k), aV=avg(aBees,k);
         const mx=Math.max(tV??0,eV??0,nV??0,aV??0)*1.2||1;
-        const fd=disc[k], rb=fd?.effect_size_rb;
-        const sigCol=fd?.significant_holm?C.expose:fd?.significant_05?C.orange:C.border;
         return (
           <div key={k} className="metric-card">
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
               <span style={{fontSize:11,fontWeight:600,color:C.text}}>{FEAT_LABELS[k]}</span>
-              <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                {rb!=null&&<span style={{fontSize:9,fontFamily:"JetBrains Mono",color:Math.abs(rb)>.3?C.text:C.muted}}>
-                  rb={rb>=0?"+":""}{rb.toFixed(2)}
-                </span>}
-                {fd?.significant_holm&&<span className="chip" style={{background:`${C.expose}22`,color:C.expose}}>*Holm</span>}
-              </div>
             </div>
-            {[["T",tV,C.temoin],["E",eV,C.expose],["N",nV,C.green],["A",aV,C.expose]].map(([lbl,v,col])=>(
+            {[["T",tV,C.temoin],["E",eV,C.expose],["N",nV,C.normal],["A",aV,C.expose]].map(([lbl,v,col])=>(
               <div key={lbl} className="metric-row">
                 <span style={{width:16,fontSize:9,color:col,fontWeight:700,fontFamily:"JetBrains Mono"}}>{lbl}</span>
                 <div className="progress-track">
@@ -385,7 +377,7 @@ function BeeTab({ selBee, mlData }) {
 
       {pb&&(
         <div className="metric-card" style={{marginBottom:10,marginTop:8}}>
-          <div className="sec-title" style={{marginBottom:6}}>XGBoost LOO</div>
+          <div className="sec-title" style={{marginBottom:6}}>XGBoost</div>
           {[
             ["Prédiction",pb.is_normal?"Normal (0)":"Anormal (1)"],
             ["Probabilité exposé",((pb.xgb_proba_loo??0)*100).toFixed(1)+"%"],
@@ -647,11 +639,10 @@ export default function BourdonTracker() {
             </div>
 
             <div className="sec">
-              <div className="sec-title">Couleur trajectoires</div>
+              <div className="sec-title">Couleur 3D</div>
               <div className="btn-grp">
-                <button className={`btn ${colorMode==="group"?"on":""}`} onClick={()=>setColorMode("group")}>Groupe</button>
-                <button className={`btn ${colorMode==="normal"?"on":""}`} onClick={()=>setColorMode("normal")} disabled={!mlData}>XGB</button>
-                <button className={`btn ${colorMode==="anomaly"?"on":""}`} onClick={()=>setColorMode("anomaly")} disabled={!mlData}>IF Score</button>
+                <button className={`btn ${colorMode==="group"?"on":""}`} onClick={()=>setColorMode("group")}>Témoins/Exposés</button>
+                <button className={`btn ${colorMode==="normal"?"on":""}`} onClick={()=>setColorMode("normal")} disabled={!mlData}>Normaux/Anormaux</button>
               </div>
             </div>
 
@@ -672,7 +663,6 @@ export default function BourdonTracker() {
                       background:pb.is_normal?`${C.green}22`:`${C.expose}22`,
                       color:pb.is_normal?C.green:C.expose,fontSize:7
                     }}>{pb.is_normal?"N":"A"}</span>}
-                    {anomScore!=null&&<span style={{fontSize:8,fontFamily:"JetBrains Mono",color:anomScore>.5?C.expose:C.muted}}>{anomScore.toFixed(2)}</span>}
                   </div>
                 );
               })}
@@ -724,11 +714,6 @@ export default function BourdonTracker() {
                 </div>
                 {xgb&&(
                   <div style={{padding:"6px 14px",borderTop:`1px solid ${C.border}`,display:"flex",gap:16,fontSize:10,color:C.muted,flexShrink:0,flexWrap:"wrap",background:C.panel}}>
-                    <span>LOO Accuracy : <strong style={{color:xgb.accuracy>.7?C.green:C.orange}}>{(xgb.accuracy*100).toFixed(1)}%</strong></span>
-                    <span>Balanced : <strong style={{color:xgb.balanced_accuracy>.7?C.green:C.orange}}>{(xgb.balanced_accuracy*100).toFixed(1)}%</strong></span>
-                    <span>AUC : <strong style={{color:xgb.auc>.7?C.green:C.orange}}>{(xgb.auc*100).toFixed(1)}%</strong></span>
-                    <span>Sens. : <strong>{(xgb.sensitivity*100).toFixed(0)}%</strong></span>
-                    <span>Spec. : <strong>{(xgb.specificity*100).toFixed(0)}%</strong></span>
                     <span style={{color:C.normal}}>✓ {mlData.n_normal}</span>
                     <span style={{color:C.abnorm}}>⚠ {mlData.n_abnormal}</span>
                   </div>
@@ -750,32 +735,12 @@ export default function BourdonTracker() {
 
             {xgb&&(
               <div style={{borderTop:`1px solid ${C.border}`,marginTop:10,paddingTop:10}}>
-                <div className="sec-title" style={{marginBottom:6}}>XGBoost LOO</div>
+                <div className="sec-title" style={{marginBottom:6}}>XGBoost</div>
                 {[
-                  ["Accuracy",     `${(xgb.accuracy*100).toFixed(1)}%`,     xgb.accuracy>.7?C.green:C.orange],
-                  ["Bal. Accuracy",`${(xgb.balanced_accuracy*100).toFixed(1)}%`,xgb.balanced_accuracy>.7?C.green:C.orange],
-                  ["AUC",          `${(xgb.auc*100).toFixed(1)}%`,          xgb.auc>.7?C.green:C.orange],
-                  ["Sensibilité",  `${(xgb.sensitivity*100).toFixed(0)}%`,  C.text],
-                  ["Spécificité",  `${(xgb.specificity*100).toFixed(0)}%`,  C.text],
                   ["Normaux ✓",    mlData.n_normal,   C.normal],
                   ["Anormaux ⚠",   mlData.n_abnormal, C.abnorm],
                 ].map(([l,v,c])=>(
                   <div key={l} className="sr"><span className="sl">{l}</span><span className="sv" style={{color:c}}>{v}</span></div>
-                ))}
-              </div>
-            )}
-
-            {IF&&(
-              <div style={{borderTop:`1px solid ${C.border}`,marginTop:10,paddingTop:10}}>
-                <div className="sec-title" style={{marginBottom:6}}>Isolation Forest</div>
-                {[
-                  ["Contamination", `${(IF.contamination_used*100).toFixed(1)}%`, C.muted],
-                  ["Score méd. T", IF.median_score_temoin?.toFixed(3), C.temoin],
-                  ["Score méd. E", IF.median_score_expose?.toFixed(3), C.expose],
-                  ["Taux anom. T", `${(IF.anomaly_rate_temoin*100).toFixed(0)}%`, C.temoin],
-                  ["Taux anom. E", `${(IF.anomaly_rate_expose*100).toFixed(0)}%`, C.expose],
-                ].map(([l,v,c])=>(
-                  <div key={l} className="sr"><span className="sl">{l}</span><span className="sv" style={{color:c}}>{v??"-"}</span></div>
                 ))}
               </div>
             )}
@@ -799,7 +764,7 @@ export default function BourdonTracker() {
 
             {mlData?.model_agreement&&(
               <div style={{borderTop:`1px solid ${C.border}`,marginTop:10,paddingTop:10}}>
-                <div className="sec-title" style={{marginBottom:6}}>Cohérence modèles</div>
+                <div className="sec-title" style={{marginBottom:6}}>"Cohérence ML"</div>
                 <div className="sr">
                   <span className="sl">IF ↔ XGB</span>
                   <span className="sv" style={{color:mlData.model_agreement.pct_agree>.8?C.green:C.orange}}>
