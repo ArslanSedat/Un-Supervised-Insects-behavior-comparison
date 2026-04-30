@@ -5,7 +5,7 @@ from scipy.stats import pearsonr
 from sklearn.decomposition import PCA
 
 FEAT_NAMES = [
-    "vitesse_moy", "vitesse_std", "stabilite", "acc_rms",
+    "vitesse_min", "vitesse_max", "vitesse_moy", "vitesse_std", "stabilite", "acc_rms",
     "sinuosity", "dist_totale", "msd_mean", "msd_slope",
     "rayon_giration", "aire", "z_std",
     "entropie_angles", "autocorr_dir", "taux_immobilite", "linearite",
@@ -24,14 +24,16 @@ def compute_features(traj, ruche=None, flowers=None, stats=None, time_step=0.1):
     acc = np.array([p.get("acceleration_ms2", 0) for p in traj], dtype=float)
     n = len(pts)
 
-    #Speed & Acceleration
+    #Speed et Acceleration
     vit_pos     = vit[vit > 0]
+    vitesse_min = float(np.min(vit_pos)) if len(vit_pos) > 0 else 0.0
+    vitesse_max = float(stats["vitesse_max_ms"]) if stats and "vitesse_max_ms" in stats else (float(np.max(vit_pos)) if len(vit_pos) > 0 else 0.0)
     vitesse_moy = float(np.mean(vit_pos)) if len(vit_pos) > 0 else 0.0
     vitesse_std = float(np.std(vit_pos))  if len(vit_pos) > 1 else 0.0
     stabilite   = max(0.0, 1.0 - vitesse_std / vitesse_moy) if vitesse_moy > 0 else 0.0
     acc_rms     = float(np.sqrt(np.mean(acc ** 2)))
 
-    #Distance & Sinuosity
+    #Distance et Sinuosity
     diffs       = np.diff(pts, axis=0)
     seg         = np.sqrt(np.sum(diffs ** 2, axis=1))
     dist_totale = float(np.sum(seg))
@@ -60,7 +62,7 @@ def compute_features(traj, ruche=None, flowers=None, stats=None, time_step=0.1):
     else:
         msd_slope = 0.0
 
-    #Gyration Radius & Area
+    #Gyration Radius et Area
     centroid  = pts.mean(axis=0)
     rayon_gir = float(np.sqrt(np.mean(np.sum((pts - centroid) ** 2, axis=1))))
     pts_xy = np.unique(pts[:, :2], axis=0)
@@ -90,7 +92,7 @@ def compute_features(traj, ruche=None, flowers=None, stats=None, time_step=0.1):
             autocorr = 0.0
     except: autocorr = 0.0
 
-    #Immobility Rate & Linearity
+    #Immobility Rate et Linearity
 
     taux_imm = float(np.mean(vit < 0.01))
 
@@ -118,7 +120,7 @@ def compute_features(traj, ruche=None, flowers=None, stats=None, time_step=0.1):
     transitions = np.diff(mouvement.astype(int))
     total_transitions = float(np.sum(np.abs(transitions)))
 
-    #Hive & Flower Interactions
+    #Hive et Flower Interactions
     duration_minutes = total_duration / 60.0
     nb_bouts = total_transitions / (duration_minutes + 0.1)
     
@@ -156,6 +158,7 @@ def compute_features(traj, ruche=None, flowers=None, stats=None, time_step=0.1):
 
     feat_dict = {}
     feat_values = [
+        vitesse_min, vitesse_max,
         vitesse_moy, vitesse_std, stabilite, acc_rms,
         sinuosity, dist_totale, msd_mean, msd_slope,
         rayon_gir, aire, z_std,

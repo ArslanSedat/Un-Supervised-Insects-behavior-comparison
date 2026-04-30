@@ -245,12 +245,12 @@ def _pca_2d(X_scaled: np.ndarray, y: np.ndarray, ids_all: list):
     }
 
 
-def _generate_shap_plot(shap_values: np.ndarray, feature_names: list) -> str:
+def _generate_shap_plot(shap_values: np.ndarray, feature_names: list, X: np.ndarray = None) -> str:
     if not HAS_SHAP or shap_values is None:
         return None
     try:
         plt.figure(figsize=(10, 6))
-        shap.plots.beeswarm(shap.Explanation(values=shap_values, feature_names=feature_names), show=False)
+        shap.plots.beeswarm(shap.Explanation(values=shap_values, data=X, feature_names=feature_names), show=False)
         buf = io.BytesIO()
         plt.savefig(buf, format='png', dpi=80, bbox_inches='tight')
         buf.seek(0)
@@ -306,7 +306,7 @@ def run_analysis(feats_t: list, feats_e: list, ids_t: list, ids_e: list) -> dict
     )
     
     pca_vis = _pca_2d(X_sc, y_all, ids_all)
-    shap_plot_img = _generate_shap_plot(sv_mat, aug_names)
+    shap_plot_img = _generate_shap_plot(sv_mat, aug_names, X_aug)
 
     per_bee = {}
     for i, bid in enumerate(ids_all):

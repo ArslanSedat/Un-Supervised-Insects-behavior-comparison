@@ -9,6 +9,7 @@ const C = {
 };
 
 const FEAT_LABELS = {
+  vitesse_min:"Vitesse min.", vitesse_max:"Vitesse max.",
   vitesse_moy:"Vitesse moy.", vitesse_std:"Vitesse σ", stabilite:"Stabilité",
   acc_rms:"Accél. RMS", sinuosity:"Sinuosité", dist_totale:"Dist. totale",
   msd_mean:"MSD moyen", msd_slope:"MSD pente",
@@ -64,7 +65,163 @@ const css = `
   .metric-card{background:${C.bg};border:1px solid ${C.border};border-radius:8px;padding:10px;margin-bottom:8px}
   .metric-row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
   .progress-track{flex:1;height:8px;background:${C.panel};border-radius:3px;border:1px solid ${C.border};overflow:hidden;position:relative}
+  .stacked-bar{height:32px;background:${C.border}22;border-radius:6px;display:flex;border:1px solid ${C.border};overflow:hidden;margin-bottom:8px}
+  .stacked-segment{display:flex;align-items:center;justify-content:center;color:${C.bg};font-size:9px;font-weight:700;font-family:'JetBrains Mono',monospace;transition:flex .15s}
 `;
+
+//SEGMENTATION DE TRAJECTOIRE POUR BUDGET D'ACTIVITÉ
+function segmentTrajectory(bee, flowers, ruche) {
+  const states = { immobile: 0, fleur: 0, lent: 0, rapide: 0, transit: 0 };
+  const FLOWER_RADIUS = 0.15;
+  const HIVE_TRANSIT_RADIUS = 0.4;
+
+  bee.points.forEach(p => {
+    const v = p.v || 0;
+    let state = "lent";
+
+    let nearFlower = false;
+    for (const [fx, fy] of flowers) {
+      const d = Math.hypot(p.x - fx, p.y - fy);
+      if (d < FLOWER_RADIUS) {
+        nearFlower = true;
+        break;
+      }
+    }
+
+    if (nearFlower && v < 0.15) {
+      state = "fleur";
+    } else if (v < 0.05) {
+      state = "immobile";
+    } else if (v < 0.25) {
+      const distToHive = Math.hypot(p.x - ruche[0], p.y - ruche[1]);
+      if (distToHive < HIVE_TRANSIT_RADIUS && v > 0.08) {
+        state = "transit";
+      } else {
+        state = "lent";
+      }
+    } else {
+      const distToHive = Math.hypot(p.x - ruche[0], p.y - ruche[1]);
+      if (distToHive < HIVE_TRANSIT_RADIUS + 0.3) {
+        state = "transit";
+      } else {
+        state = "rapide";
+      }
+    }
+
+    states[state]++;
+  });
+
+  return states;
+}
+
+//COMPOSANT BUDGET D'ACTIVITÉ
+function ActivityBudgetTab({ bees, flowers, rucheT, rucheE, selIds }) {
+  const STATE_COLORS = {
+    immobile: "#cc3333",
+    fleur: "#d29922",
+    lent: "#2d9a2d",
+    rapide: "#0066cc",
+    transit: "#6b3db8",
+  };
+  const STATE_LABELS = {
+    immobile: "Immobile",
+    fleur: "Près d'une fleur",
+    lent: "Déplacement lent",
+    rapide: "Déplacement rapide",
+    transit: "En transit vers ruche",
+  };
+
+  const filtered = selIds && selIds.size > 0 ? bees.filter(b=>selIds.has(b.id)) : bees;
+  if (!filtered.length) {
+    return <div className="no-data"><span>Chargez les deux fichiers.</span></div>;
+  }
+
+  const tBees = filtered.filter(b=>b.group==="temoin");
+  const eBees = filtered.filter(b=>b.group==="expose");
+
+  const computeBudget = (beeList, ruche) => {
+    const agg = { immobile: 0, fleur: 0, lent: 0, rapide: 0, transit: 0 };
+    beeList.forEach(bee => {
+      const seg = segmentTrajectory(bee, flowers, ruche);
+      Object.entries(seg).forEach(([k,v]) => agg[k] += v);
+    });
+    const total = Object.values(agg).reduce((a,b)=>a+b,0);
+    const pct = {};
+    Object.entries(agg).forEach(([k,v]) => pct[k] = total ? (v/total*100) : 0);
+    return { counts: agg, pct, total };
+  };
+
+  const tBudget = tBees.length > 0 ? computeBudget(tBees, rucheT || [0.1, 0.1, 0]) : null;
+  const eBudget = eBees.length > 0 ? computeBudget(eBees, rucheE || [0.1, 0.1, 0]) : null;
+
+  const BudgetBar = ({ budget, label, count, color }) => (
+    <div style={{marginBottom:16}}>
+      <div style={{fontSize:11,fontWeight:600,color:C.text,marginBottom:6}}>
+        {label} <span style={{fontSize:9,color:C.muted}}>({count} bourdons)</span>
+      </div>
+      <div className="stacked-bar">
+        {["immobile","fleur","lent","rapide","transit"].map(state=>(
+          budget.pct[state] > 0 && (
+            <div
+              key={state}
+              className="stacked-segment"
+              style={{flex:budget.pct[state],background:STATE_COLORS[state]}}
+              title={`${STATE_LABELS[state]}: ${budget.pct[state].toFixed(1)}%`}
+            >
+              {budget.pct[state]>8 && `${budget.pct[state].toFixed(0)}%`}
+            </div>
+          )
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:6}}>
+        {["immobile","fleur","lent","rapide","transit"].map(state=>(
+          <div key={state} style={{display:"flex",alignItems:"center",gap:4,fontSize:9}}>
+            <div style={{width:10,height:10,borderRadius:3,background:STATE_COLORS[state],flexShrink:0}}/>
+            <span style={{color:C.text,flex:1}}>{STATE_LABELS[state]}</span>
+            <span style={{color:C.muted,fontFamily:"JetBrains Mono",textAlign:"right",width:36}}>
+              {budget.pct[state].toFixed(1)}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{padding:16,overflowY:"auto",height:"100%"}}>
+      <div style={{fontFamily:"Syne",fontWeight:800,fontSize:14,marginBottom:4}}>Budget d'activité</div>
+      <div style={{color:C.muted,fontSize:11,marginBottom:16,lineHeight:1.6}}>
+        Segmentation automatique basée sur vitesse et proximité spatiale. Révèle les différences comportementales majeures.
+      </div>
+
+      {tBudget && <BudgetBar budget={tBudget} label="Groupe Témoin" count={tBees.length} color={C.temoin}/>}
+      {eBudget && <BudgetBar budget={eBudget} label="Groupe Exposé" count={eBees.length} color={C.expose}/>}
+
+      {tBudget && eBudget && (
+        <div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
+          <div style={{fontSize:11,fontWeight:600,color:C.text,marginBottom:10}}>Différences principales (Exposés p/r aux Témoins)</div>
+          {["immobile","fleur","lent","rapide","transit"].map(state=>{
+            const tVal = tBudget.pct[state];
+            const eVal = eBudget.pct[state];
+            const diff = eVal - tVal;
+            const sign = diff>0?"+":"";
+            return (
+              <div key={state} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:10,borderBottom:`1px solid ${C.border}22`}}>
+                <span style={{color:C.text,display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{width:8,height:8,borderRadius:2,background:STATE_COLORS[state]}}/>
+                  {STATE_LABELS[state]}
+                </span>
+                <span style={{color:Math.abs(diff)>5?C.abnorm:C.muted,fontFamily:"JetBrains Mono",fontWeight:Math.abs(diff)>5?700:400}}>
+                  {sign}{diff.toFixed(1)}%
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 //PARSER JSON
 function parseJSON(json, groupOverride) {
@@ -76,6 +233,7 @@ function parseJSON(json, groupOverride) {
     ? [cage.dimensions_m.longueur, cage.dimensions_m.largeur, cage.dimensions_m.hauteur]
     : [2.5, 2.5, 1.8];
   const flowers   = (cage.plantes || []).map(p => [p.x, p.y, p.z ?? 0, p.id]);
+  const commentaires = json.metadonnees?.Commentaires || null;
 
   const bees = [];
   for (const [key, val] of Object.entries(json)) {
@@ -87,6 +245,8 @@ function parseJSON(json, groupOverride) {
     bees.push({
       id: val.id || key, key, group, metriques: metr, points,
       stats: {
+        vitesse_min:     metr.vitesse_min     ?? 0,
+        vitesse_max:     metr.vitesse_max     ?? 0,
         vitesse_moy:     metr.vitesse_moy     ?? stats.vitesse_moyenne_ms ?? 0,
         vitesse_std:     metr.vitesse_std     ?? 0,
         stabilite:       metr.stabilite       ?? 0,
@@ -112,7 +272,7 @@ function parseJSON(json, groupOverride) {
       },
     });
   }
-  return { flowers, ruche, worldSize, bees };
+  return { flowers, ruche, worldSize, bees, commentaires };
 }
 
 //3d
@@ -242,7 +402,7 @@ function PcaCanvas({ mlData, colorMode, selIds, onClickBee }) {
         ctx.fill(); ctx.stroke();
         ctx.globalAlpha=1;
         ctx.fillStyle = C.text; ctx.font="bold 8px JetBrains Mono"; ctx.textAlign="center";
-        ctx.fillText(id.replace("BE-","").replace("bourdon_",""), px, py-13);
+        ctx.fillText(id.replace("BE-","BE-").replace("bourdon_",""), px, py-13);
       });
     } catch(err) { console.error("PCA canvas error:", err); }
   }, [mlData, colorMode, selIds]);
@@ -292,13 +452,56 @@ function ShapTab({ mlData }) {
     <div style={{padding:16,overflowY:"auto",height:"100%",display:"flex",flexDirection:"column",alignItems:"center"}}>
       <img src={mlData.shap.plot_img} style={{maxWidth:"100%",height:"auto",borderRadius:8,marginBottom:16}} />
       <div style={{fontSize:11,color:C.muted,lineHeight:1.6,maxWidth:600}}>
-        <strong style={{color:C.text}}>Beeswarm SHAP :</strong> Chaque point représente un échantillon.
-        L'axe horizontal = SHAP value (contribution de la variable à la décision du modèle), couleur = valeur de la feature (tend vers le rouge = valeur de la feature plus élevée).
+        <strong style={{color:C.text}}>Beeswarm SHAP :</strong> Chaque point représente un échantillon. <br/>
+        L'axe horizontal = SHAP value (contribution de la variable à la décision du modèle) <br/> Couleur = valeur de la feature (tend vers le rouge = valeur de la feature plus élevée).
       </div>
     </div>
   );
 }
 
+
+//COMMENTAIRES
+function CommentsTab({ commentsT, commentsE }) {
+  const isEmptyComment = (c) => !c || c === "null" || c === "None" || c === "";
+
+  return (
+    <div style={{padding:16,overflowY:"auto",height:"100%",display:"flex",flexDirection:"column"}}>
+      <div style={{fontFamily:"Syne",fontWeight:800,fontSize:14,marginBottom:16}}>Commentaires expérimentaux</div>
+      
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,flex:1}}>
+        {/* TÉMOIN */}
+        <div style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,padding:14,display:"flex",flexDirection:"column"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,paddingBottom:10,borderBottom:`1px solid ${C.border}`}}>
+            <span style={{width:10,height:10,borderRadius:"50%",background:C.temoin}}/>
+            <div style={{fontFamily:"Syne",fontWeight:700,fontSize:12,color:C.text}}>Groupe Témoin</div>
+          </div>
+          <div style={{flex:1,fontSize:11,lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap",wordBreak:"break-word",fontFamily:"Space Grotesk"}}>
+            {isEmptyComment(commentsT) ? (
+              <span style={{color:C.muted,fontStyle:"italic"}}>Aucun commentaire</span>
+            ) : (
+              commentsT
+            )}
+          </div>
+        </div>
+
+        {/* EXPOSÉ */}
+        <div style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,padding:14,display:"flex",flexDirection:"column"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,paddingBottom:10,borderBottom:`1px solid ${C.border}`}}>
+            <span style={{width:10,height:10,borderRadius:"50%",background:C.expose}}/>
+            <div style={{fontFamily:"Syne",fontWeight:700,fontSize:12,color:C.text}}>Groupe Exposé</div>
+          </div>
+          <div style={{flex:1,fontSize:11,lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap",wordBreak:"break-word",fontFamily:"Space Grotesk"}}>
+            {isEmptyComment(commentsE) ? (
+              <span style={{color:C.muted,fontStyle:"italic"}}>Aucun commentaire</span>
+            ) : (
+              commentsE
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 //IMPACT
 function ImpactTab({ bees, mlData, selIds }) {
@@ -317,7 +520,6 @@ function ImpactTab({ bees, mlData, selIds }) {
   return (
     <div style={{padding:16,overflowY:"auto",height:"100%"}}>
       <div style={{fontFamily:"Syne",fontWeight:800,fontSize:14,marginBottom:4}}>Profil comparatif</div>
-      <div style={{color:C.muted,fontSize:11,marginBottom:16,lineHeight:1.6}}>Triées par "effect size" · Médiane (ou moyenne???)</div>
       {sortedKeys.map(k=>{
         const tV=avg(tBees,k), eV=avg(eBees,k), nV=avg(nBees,k), aV=avg(aBees,k);
         const mx=Math.max(tV??0,eV??0,nV??0,aV??0)*1.2||1;
@@ -458,6 +660,8 @@ export default function BourdonTracker() {
   const [mlData,setMlData]       = useState(null);
   const [colorMode,setColorMode] = useState("group");
   const [pcaColor,setPcaColor]   = useState("group");
+  const [commentsT,setCommentsT] = useState(null);
+  const [commentsE,setCommentsE] = useState(null);
 
   const [panX,setPanX]=useState(0),[panY,setPanY]=useState(0);
   const [zoom,setZoom]=useState(1);
@@ -499,6 +703,7 @@ export default function BourdonTracker() {
       setFlowersT(dT.flowers); setFlowersE(dE.flowers);
       setRucheT(dT.ruche); setRucheE(dE.ruche);
       setWorldSize(dT.worldSize);
+      setCommentsT(dT.commentaires); setCommentsE(dE.commentaires);
       setProcessed(true); setLoading(false);
     })();
   },[rawT,rawE,processed,uploadJson]);
@@ -583,7 +788,7 @@ export default function BourdonTracker() {
 
   const TABS = [
     ["map","3D"],["pca","PCA"],["shap","SHAP"],
-    ["impact","Impact"],["bee","Individu"],
+    ["activity","Budget d'activité"],["impact","Impact"],["bee","Individu"],["comments","Commentaires"],
   ];
 
   const selGroups = [
@@ -722,6 +927,8 @@ export default function BourdonTracker() {
             )}
 
             {tab==="shap"&&<div style={{flex:1,overflowY:"auto"}}><ShapTab mlData={mlData}/></div>}
+            {tab==="activity"&&<div style={{flex:1,overflowY:"auto"}}><ActivityBudgetTab bees={bees} flowers={allFlowers} rucheT={rucheT} rucheE={rucheE} selIds={selIds}/></div>}
+            {tab==="comments"&&<div style={{flex:1,overflowY:"auto"}}><CommentsTab commentsT={commentsT} commentsE={commentsE}/></div>}
             {tab==="impact"&&<div style={{flex:1,overflowY:"auto"}}><ImpactTab bees={bees} mlData={mlData} selIds={selIds}/></div>}
             {tab==="bee"&&<div style={{flex:1,overflowY:"auto"}}><BeeTab selBee={selBee} mlData={mlData}/></div>}
           </div>
@@ -742,6 +949,33 @@ export default function BourdonTracker() {
                 ].map(([l,v,c])=>(
                   <div key={l} className="sr"><span className="sl">{l}</span><span className="sv" style={{color:c}}>{v}</span></div>
                 ))}
+                
+                {xgb.confusion_matrix&&(
+                  <div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${C.border}22`}}>
+                    <div style={{fontSize:9,color:C.muted,marginBottom:6,fontWeight:600}}>Confusion Matrix</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:3,fontSize:8,fontFamily:"JetBrains Mono"}}>
+                      <div style={{textAlign:"center",color:C.muted}}></div>
+                      <div style={{textAlign:"center",color:C.muted,fontWeight:600}}>Normal</div>
+                      <div style={{textAlign:"center",color:C.muted,fontWeight:600}}>Anormal</div>
+                      
+                      <div style={{color:C.muted,fontWeight:600}}>Témoin</div>
+                      <div style={{background:`${C.normal}22`,padding:4,borderRadius:3,textAlign:"center",fontWeight:700,color:C.normal}}>
+                        {xgb.confusion_matrix.tn}
+                      </div>
+                      <div style={{background:`${C.expose}22`,padding:4,borderRadius:3,textAlign:"center",fontWeight:700,color:C.expose}}>
+                        {xgb.confusion_matrix.fp}
+                      </div>
+                      
+                      <div style={{color:C.muted,fontWeight:600}}>Exposé</div>
+                      <div style={{background:`${C.expose}22`,padding:4,borderRadius:3,textAlign:"center",fontWeight:700,color:C.expose}}>
+                        {xgb.confusion_matrix.fn}
+                      </div>
+                      <div style={{background:`${C.normal}22`,padding:4,borderRadius:3,textAlign:"center",fontWeight:700,color:C.normal}}>
+                        {xgb.confusion_matrix.tp}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
