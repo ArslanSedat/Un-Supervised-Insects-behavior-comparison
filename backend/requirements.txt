@@ -1,0 +1,9 @@
+numpy
+scipy
+scikit-learn
+flask
+flask-cors
+umap-learn
+hdbscan
+shap
+pytest

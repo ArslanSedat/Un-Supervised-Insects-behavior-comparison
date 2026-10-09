@@ -1,0 +1,7 @@
+.env
+venv/
+data/
+BeeVITO.exe
+.venv/
+*.pyc
+__pycache__/
